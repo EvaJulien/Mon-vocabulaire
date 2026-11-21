@@ -31,8 +31,11 @@ Double-cliquer sur `index.html` suffit pour voir l'appli dans le navigateur
    Sur Android : Chrome → menu ⋮ → « Installer l'application ».
 5. Toujours ouvrir l'appli depuis l'icône (sur iPhone, Safari et l'icône ont des données séparées).
 
-À chaque mise à jour : renvoyer les fichiers modifiés sur GitHub et changer
-`VERSION` en haut de `sw.js` (ex. `mon-vocabulaire-v1.0.1`).
+À chaque mise à jour : renvoyer **tous les fichiers** sur GitHub. Les numéros de version
+(`version.json`, `APP_VERSION` en haut de `app.js`, `?v=` dans `index.html`, `VERSION` dans `sw.js`)
+sont déjà changés par Claude. Quand le téléphone ouvre l'appli, un bandeau
+« Nouvelle version disponible » apparaît : appuyer sur « Mettre à jour ».
+Sinon : roue crantée → Mise à jour → « Forcer la mise à jour » (tes mots sont conservés).
 
 ## Récupérer les mots de la version Claude
 

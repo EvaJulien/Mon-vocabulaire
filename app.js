@@ -1,5 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
+const APP_VERSION = '1.7.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -73,7 +74,8 @@ const THEMES = [
 const ADJ = "grand grande petit petite bon bonne mauvais mauvaise beau belle joli jolie nouveau nouvelle vieux vieille jeune facile difficile heureux heureuse triste fatigue fatiguee content contente chaud chaude froid froide rapide lent lente fort forte faible gentil gentille mechant drole calme occupe libre long longue court courte haut haute bas basse proche loin";
 const ADJ_EN = "big large small little good bad beautiful pretty nice new old young easy difficult hard happy sad tired glad hot warm cold fast quick slow strong weak kind funny calm busy free long short high low near far";
 const deaccent = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
-const frKey = s => deaccent(String(s).toLowerCase()).replace(/[’‘`´]/g, "'").replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[^a-z0-9' -]/g, ' ').replace(/\s+/g, ' ').trim();
+const joinDigits = s => String(s).replace(/(\d)[\s.,\u00a0\u202f'’](?=\d{3}(?!\d))/g, '$1').replace(/(\d)[\s.,\u00a0\u202f'’](?=\d{3}(?!\d))/g, '$1');
+const frKey = s => deaccent(joinDigits(s).toLowerCase()).replace(/[’‘`´]/g, "'").replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[^a-z0-9' -]/g, ' ').replace(/\s+/g, ' ').trim();
 // tokens: lower, no accents, hyphens/apostrophes as spaces, leading article removed when something follows
 const tok = (s, en) => {
   let t = ' ' + frKey(s).replace(/[-']/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
@@ -149,7 +151,7 @@ const ui = { theme: 'all', q: '', libLang: null, openId: null, importText: '', a
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const norm = s => String(s).toLowerCase().replace(/[’‘`´]/g, "'").replace(/\s+/g, ' ').trim().replace(/[.!?;,]+$/, '').trim();
+const norm = s => joinDigits(s).toLowerCase().replace(/[’‘`´]/g, "'").replace(/\s+/g, ' ').trim().replace(/[.!?;,]+$/, '').trim();
 const split = s => String(s).split(/[\/;]/).map(x => x.trim()).filter(Boolean);
 const midnight = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const ymd = t => { const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
@@ -230,6 +232,22 @@ function remoteBackend(db, id) {
 const saveCfg = () => { cfg.rev = (cfg.rev || 0) + 1; backend?.cfg(); };
 function setStatus(t) { $('#status').textContent = t; }
 
+const canUpdate = () => !framed && /^https?:$/.test(location.protocol);
+async function latestVersion() {
+  try { const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); return r.ok ? (await r.json()).version : null; } catch (e) { return null; }
+}
+async function hardUpdate() {
+  toast('Mise à jour en cours…');
+  try { const regs = await navigator.serviceWorker?.getRegistrations(); await Promise.all((regs || []).map(r => r.unregister())); } catch (e) {}
+  try { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); } catch (e) {}
+  location.replace(location.pathname + '?v=' + Date.now());
+}
+async function checkUpdate(manual) {
+  if (!canUpdate()) return;
+  const v = await latestVersion();
+  if (v && v !== APP_VERSION) { ui.newVersion = v; render(); }
+  else if (manual) toast(v ? 'Tu as la dernière version.' : 'Impossible de vérifier (pas de connexion ?).');
+}
 async function boot() {
   let db = null, user = null, id = null;
   try { framed = window.top !== window; } catch (e) { framed = true; }
@@ -245,6 +263,8 @@ async function boot() {
     backend = localBackend();
     setStatus(framed ? 'Mode hors ligne : les mots restent sur cet appareil.' : '');
     applyTheme(); startSessionIfNeeded(); render();
+    checkUpdate(false);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
   }
 }
 
@@ -409,9 +429,17 @@ function check(given, q) {
   const one = g => all.some(t => q.al === 'fr' ? frClose(g, t) : normT(t, q.al) === normT(g, q.al));
   return one(given) || (parts.length > 1 && parts.every(one));
 }
+const mustRetype = q => q.al !== 'fr';
 function submit(val) {
   const s = session, w = words.get(s.cur.id);
-  if (!w || !val.trim()) return;
+  if (!w) return;
+  if (s.state === 'right' || (s.state === 'wrong' && !mustRetype(s.cur))) { next(); render(); return; }
+  if (s.state === 'wrong') {
+    if (check(val, s.cur)) { next(); render(); }
+    else { const i = $('#ans'); i.value = ''; i.placeholder = 'Pas tout à fait, recopie-la'; i.focus(); }
+    return;
+  }
+  if (!val.trim()) return;
   if (s.state === 'ask') {
     s.cur.given = val;
     if (check(val, s.cur)) { s.cur.loose = s.cur.al === 'fr' && !s.cur.answers.flatMap(variants).some(t => norm(t) === norm(val)); grade(w, true); s.state = 'right'; }
@@ -551,15 +579,17 @@ function renderRev() {
   const flagTxt = (q.pl === 'fr' ? 'Français' : getLang(q.pl).name) + ' → ' + ansName;
   let fb = '';
   if (s.state === 'right') fb = `<div class="fb ok">Juste ! <span class="pts">${q.delta > 0 ? '+' + q.delta + ' pts' : ''}</span>${move}${q.to === TOP && q.from !== TOP ? ' · mot maîtrisé !' : ''}${q.loose ? `<small>Bonne réponse ! Orthographe exacte : ${esc(q.answers.join(' ou '))}</small>` : q.answers.length > 1 ? `<small>Toutes les réponses : ${esc(q.answers.join(' ou '))}</small>` : ''}</div>`;
-  if (s.state === 'wrong') fb = `<div class="fb ko">Ta réponse : <span class="yours">${esc(q.given)}</span><span class="right">${esc(q.answers.join(' ou '))}</span><small>${q.delta < 0 ? `<span class="pts">${q.delta} pts</span> · ` : ''}retour en case Nouv.</small></div>`;
+  if (s.state === 'wrong') fb = `<div class="fb ko">Ta réponse : <span class="yours">${esc(q.given)}</span><span class="right">${esc(q.answers.join(' ou '))}</span><small>${q.delta < 0 ? `<span class="pts">${q.delta} pts</span> · ` : ''}retour en case Nouv.</small>${mustRetype(q) ? `<small><b>Recopie ${q.answers.flatMap(variants).length > 1 ? 'une de ces réponses' : 'la bonne réponse'} pour continuer.</b></small>` : ''}</div>`;
+  const retype = s.state === 'wrong' && mustRetype(q);
+  const ph = s.state === 'ask' ? 'En ' + ansName + '…' : retype ? 'Recopie en ' + ansName + '…' : 'Entrée pour le mot suivant';
   const prog = s.extra ? `Entraînement libre · ${s.done}` : `Encore ${s.queue.length + (s.state === 'ask' ? 1 : 0)} à revoir`;
   return head + `<div class="card ${cls}">
     <div class="dir"><span class="flag">${esc(flagTxt)}</span><span>${s.combo >= 3 ? `<span class="combo">Série de ${s.combo}</span> · ` : ''}${prog}</span></div>
     <div class="word" lang="${esc(langCode(q.pl))}">${esc(prompt)}</div>
     ${fb}
     <form id="f" autocomplete="off" style="margin-top:14px">
-      ${s.state !== 'ask' ? '' : `<input id="ans" lang="${esc(langCode(q.al))}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${'En ' + esc(ansName) + '…'}" aria-label="Ta réponse en ${esc(ansName)}">`}
-      <div class="row">${s.state !== 'ask' ? `<button class="btn grow" type="button" data-a="next" id="nextBtn">Mot suivant</button>` : `<button class="btn grow" type="submit">Vérifier</button>`}</div>
+      <input id="ans" lang="${esc(langCode(q.al))}" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="${s.state === 'ask' || retype ? 'done' : 'next'}" placeholder="${esc(ph)}" aria-label="Ta réponse en ${esc(ansName)}">
+      <div class="row">${s.state === 'ask' ? `<button class="btn grow" type="submit">Vérifier</button>` : retype ? `<button class="btn grow" type="submit">Valider</button>` : `<button class="btn grow" type="submit" id="nextBtn">Mot suivant</button>`}</div>
       ${s.state === 'wrong' && q.addTo ? `<div class="row"><button class="btn link" type="button" data-a="mine">Ma réponse était juste aussi : l'ajouter</button></div>` : ''}
     </form>
   </div>`;
@@ -584,7 +614,9 @@ function renderLib() {
         <div class="row"><button class="btn" type="submit">Enregistrer</button><button class="btn ghost" type="button" data-a="del" data-id="${w.id}">Supprimer</button></div>
       </form>` : ''}</li>`;
   const libBlock = l => {
-    const lw = ws.filter(w => wLib(w) === l.id).sort((a, b) => a.en[0].localeCompare(b.en[0]));
+    // numbers in increasing order (1, 2, 3… then 1er, 2e…), everything else alphabetical
+    const num = w => { const f = w.fr.find(x => /^\s*\d/.test(x)); if (!f) return null; const m = f.replace(/\s/g, '').match(/^(\d+)(er|re|e|ème)?/i); return m ? (m[2] ? 1e12 : 0) + Number(m[1]) : null; };
+    const lw = ws.filter(w => wLib(w) === l.id).sort((a, b) => { const x = num(a), y = num(b); if (x !== null && y !== null) return x - y; if (x !== null) return -1; if (y !== null) return 1; return a.en[0].localeCompare(b.en[0]); });
     if (q && !lw.length) return '';
     const n = [...words.values()].filter(w => wLib(w) === l.id).length;
     const editing = ui.editLib === l.id;
@@ -647,6 +679,7 @@ function renderSet() {
     <div class="fl" style="margin-top:8px">${avail.map(([n, c]) => `<button class="chip" data-a="addlang" data-n="${n}" data-c="${c}">+ ${n}</button>`).join('')}</div>
     <form id="nlang" class="row"><input id="nl-n" placeholder="Autre langue (ex. Thaï)" style="flex:1"><button class="btn" type="submit">Ajouter</button></form>
   </section>
+  ${canUpdate() ? `<section><h2>Mise à jour</h2><p class="note" style="margin-top:0">Version installée : ${APP_VERSION}</p><div class="row"><button class="btn ghost" data-a="checkupd">Vérifier les mises à jour</button><button class="btn ghost" data-a="update">Forcer la mise à jour</button></div></section>` : ''}
   <section><h2>Sauvegarde</h2>
     <p class="note" style="margin-top:0">${backend && !framed ? "Tes mots sont enregistrés sur cet appareil. Fais une sauvegarde de temps en temps : elle te permet de tout récupérer sur un autre téléphone." : "Tes mots, ton score et tes réglages sont enregistrés dans ton compte. Si tu partages l'appli, chaque personne a sa propre boîte. La sauvegarde te permet de les transférer vers la version installée sur ton téléphone."}</p>
     <div class="row">${!framed ? '<button class="btn" data-a="backup">Sauvegarder (fichier)</button>' : ''}<button class="btn ghost" data-a="backuptext">Copier la sauvegarde (texte)</button>
@@ -662,14 +695,15 @@ function render(fromSnap) {
   if (fromSnap && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.id !== 'ans') return;
   const ansVal = fromSnap ? $('#ans')?.value : null;
   if (view !== 'rev') $('#main').style.paddingBottom = '';
-  $('#main').innerHTML = view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : renderSet();
+  const banner = ui.newVersion ? `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>` : '';
+  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : renderSet());
   if (view === 'rev') {
     const a = $('#ans');
     const card = document.querySelector('.card');
     // enough room below the card so it can always sit at the top of the screen, above the keyboard
     $('#main').style.paddingBottom = card ? Math.max(90, innerHeight - card.offsetHeight - 20) + 'px' : '';
     if (ui.toCard && card) { ui.toCard = false; card.scrollIntoView({ block: 'start' }); }
-    if (a) { if (ansVal) a.value = ansVal; a.focus({ preventScroll: true }); } else if ($('#nextBtn') && matchMedia('(hover:hover)').matches) $('#nextBtn').focus({ preventScroll: true });
+    if (a) { if (ansVal && session?.state === 'ask') a.value = ansVal; a.focus({ preventScroll: true }); }
   } else if (keep === 'q' && $('#q')) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
 }
 
@@ -807,6 +841,8 @@ $('#main').addEventListener('click', e => {
   }
   if (a === 'mode') { cfg.theme.mode = b.dataset.k; applyTheme(); saveCfg(); render(); }
   if (a === 'backup') downloadBackup();
+  if (a === 'update') hardUpdate();
+  if (a === 'checkupd') checkUpdate(true);
   if (a === 'backuptext') {
     const txt = backupJSON();
     const p = navigator.clipboard?.writeText(txt);
@@ -842,7 +878,7 @@ $('#main').addEventListener('change', e => {
   }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && view === 'rev' && (session?.state === 'right' || session?.state === 'wrong') && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); next(); render(); }
+  if (e.key === 'Enter' && view === 'rev' && (session?.state === 'right' || (session?.state === 'wrong' && !mustRetype(session.cur))) && !/BUTTON|INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) { e.preventDefault(); next(); render(); }
 });
 
 applyTheme();
