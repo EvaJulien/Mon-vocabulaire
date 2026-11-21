@@ -238,6 +238,7 @@ async function latestVersion() {
 }
 async function hardUpdate() {
   toast('Mise à jour en cours…');
+  try { if (ui.newVersion) localStorage.setItem('vocab-upd-tried', ui.newVersion); } catch (e) {}
   try { const regs = await navigator.serviceWorker?.getRegistrations(); await Promise.all((regs || []).map(r => r.unregister())); } catch (e) {}
   try { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); } catch (e) {}
   location.replace(location.pathname + '?v=' + Date.now());
@@ -245,7 +246,9 @@ async function hardUpdate() {
 async function checkUpdate(manual) {
   if (!canUpdate()) return;
   const v = await latestVersion();
-  if (v && v !== APP_VERSION) { ui.newVersion = v; render(); }
+  let tried = null; try { tried = localStorage.getItem('vocab-upd-tried'); } catch (e) {}
+  if (v && v !== APP_VERSION) { ui.newVersion = v; ui.updFailed = tried === v; render(); }
+  else if (v) { try { localStorage.removeItem('vocab-upd-tried'); } catch (e) {} }
   else if (manual) toast(v ? 'Tu as la dernière version.' : 'Impossible de vérifier (pas de connexion ?).');
 }
 async function boot() {
@@ -713,7 +716,9 @@ function render(fromSnap) {
   if (fromSnap && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.id !== 'ans') return;
   const ansVal = fromSnap ? $('#ans')?.value : null;
   if (view !== 'rev') $('#main').style.paddingBottom = '';
-  const banner = ui.newVersion ? `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>` : '';
+  const banner = !ui.newVersion ? '' : ui.updFailed
+    ? `<div class="upd"><span>La version ${esc(ui.newVersion)} ne s'installe pas : sur GitHub, <b>app.js</b> ou <b>style.css</b> n'ont pas été remplacés (version installée : ${APP_VERSION}). Renvoie tous les fichiers, attends la coche verte, puis réessaie.</span><button class="btn small" data-a="update">Réessayer</button></div>`
+    : `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>`;
   $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : renderSet());
   if (view === 'rev') {
     const a = $('#ans');
