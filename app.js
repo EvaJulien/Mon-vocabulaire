@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -476,7 +476,8 @@ function grade(w, good) {
   } else {
     s.combo = 0; s.missed.add(w.id); to = 0;
     update(w, { lvl: 0, due: Date.now(), ko: w.ko + 1 });
-    if (!s.extra) s.queue.splice(Math.min(3, s.queue.length), 0, w.id);
+    // a missed word comes back 8 to 12 words later (or at the end of the round)
+    if (!s.extra) s.queue.splice(Math.min(8 + Math.floor(Math.random() * 5), s.queue.length), 0, w.id);
   }
   s.cur.from = from; s.cur.to = to; s.cur.delta = PTS[to] - PTS[from]; s.gained += s.cur.delta;
   popBox = to !== from ? to : -1;
