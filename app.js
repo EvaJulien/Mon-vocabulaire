@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -123,12 +123,14 @@ function lev(a, b) {
   }
   return p[b.length];
 }
-function frClose(given, target) {
+// typo tolerance: same first letter, long enough word, and not another French word the user knows
+function frClose(given, target, known) {
   const g = frLoose(given), t = frLoose(target);
   if (!g) return false;
   if (g === t) return true;
-  const tol = t.length >= 9 ? 2 : t.length >= 5 ? 1 : 0;
-  return tol > 0 && lev(g, t) <= tol;
+  const tol = t.length >= 10 ? 2 : t.length >= 6 ? 1 : 0;
+  if (!tol || g[0] !== t[0] || (known && known.has(g))) return false;
+  return lev(g, t) <= tol;
 }
 
 const defaultCfg = () => ({
@@ -429,7 +431,8 @@ const variants = t => { const v = String(t).replace(/\([^)]*\)/g, ' ').split(/[,
 function check(given, q) {
   const parts = String(given).replace(/\([^)]*\)/g, ' ').split(/[,\/;]/).map(x => x.trim()).filter(Boolean);
   const all = q.answers.flatMap(variants);
-  const one = g => all.some(t => q.al === 'fr' ? frClose(g, t) : normT(t, q.al) === normT(g, q.al));
+  const known = q.al === 'fr' ? new Set([...words.values()].flatMap(w => w.fr.flatMap(variants)).map(frLoose)) : null;
+  const one = g => all.some(t => q.al === 'fr' ? frClose(g, t, known) : normT(t, q.al) === normT(g, q.al));
   return one(given) || (parts.length > 1 && parts.every(one));
 }
 const mustRetype = q => q.al !== 'fr';
