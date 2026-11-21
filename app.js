@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -659,6 +659,24 @@ function renderAdd() {
     <div class="row"><button class="btn" type="submit">Importer</button>${L.code === 'en' && enCount < 5 ? `<button class="btn ghost" type="button" data-a="starter">Mots de mes premières leçons</button>` : ''}</div></form>
   </section>`;
 }
+function renderHelp() {
+  const arrowR = c => `<svg width="120" height="22" viewBox="0 0 120 22" aria-hidden="true"><path d="M4 11h104" stroke="${c}" stroke-width="3" stroke-linecap="round"/><path d="M104 4l10 7-10 7" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const arrowL = c => `<svg width="120" height="22" viewBox="0 0 120 22" aria-hidden="true"><path d="M116 11H12" stroke="${c}" stroke-width="3" stroke-linecap="round"/><path d="M16 4 6 11l10 7" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<section><h2>Comment marchent les points ?</h2>
+    <p style="margin:0">Chaque mot est rangé dans une case. Plus il avance, plus il revient tard, et plus il rapporte de points.</p>
+    <div class="hbox">${BOXL.map((l, i) => `<div class="hb${i === TOP ? ' crown' : ''}"><small>${l}</small><b>${PTS[i]}</b><small>pt${PTS[i] > 1 ? 's' : ''}</small></div>`).join('')}</div>
+    <div class="harrow hok">${arrowR('var(--green)')}<span><b>Juste</b> : le mot avance d'une case</span></div>
+    <div class="harrow hko">${arrowL('var(--red)')}<span><b>Raté</b> : retour en case Nouv.</span></div>
+    <ul class="hlist">
+      <li>Ton <b>score</b>, c'est la somme des points de tous tes mots.</li>
+      <li>Un mot raté perd tous ses points, mais il revient vite pour que tu le rattrapes.</li>
+      <li>La case <b>3 mois</b> (avec la couronne) vaut 40 points : un mot qui y arrive est <b>maîtrisé</b>.</li>
+      <li>Les <b>paliers</b> (5, 10, 25, 50…) comptent tes mots maîtrisés.</li>
+      <li>La <b>série</b> compte les jours d'affilée où tu as révisé.</li>
+    </ul>
+    <div class="row"><button class="btn" data-a="gorev">Réviser</button></div>
+  </section>`;
+}
 function renderSet() {
   const t = cfg.theme;
   const p = t.preset === 'custom' ? t : (PRESETS[t.preset] || PRESETS.foret);
@@ -696,7 +714,7 @@ function render(fromSnap) {
   const ansVal = fromSnap ? $('#ans')?.value : null;
   if (view !== 'rev') $('#main').style.paddingBottom = '';
   const banner = ui.newVersion ? `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>` : '';
-  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : renderSet());
+  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : renderSet());
   if (view === 'rev') {
     const a = $('#ans');
     const card = document.querySelector('.card');
@@ -721,6 +739,7 @@ $('#toastB').addEventListener('click', () => { toastUndo?.(); $('#toast').style.
 const go = v => { view = v; ui.openId = null; ui.editLib = null; ui.confirm = null; ui.newLib = false; ui.addNew = false; ui.restore = null; ui.backupText = ''; if (v === 'rev') startSessionIfNeeded(); render(); };
 document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.v); });
 $('#gear').addEventListener('click', () => go(view === 'set' ? 'rev' : 'set'));
+$('#score').addEventListener('click', () => go(view === 'help' ? 'rev' : 'help'));
 
 $('#main').addEventListener('submit', e => {
   e.preventDefault();
@@ -782,6 +801,7 @@ $('#main').addEventListener('click', e => {
   if (a === 'mine') acceptMine();
   if (a === 'extra') { session = newSession(true); next(); render(); }
   if (a === 'goadd') go('add');
+  if (a === 'gorev') go('rev');
   if (a === 'golang') { go('set'); document.getElementById('langs')?.scrollIntoView(); }
   if (a === 'starter') { ui.importText = STARTER; render(); }
   if (a === 'tog') {

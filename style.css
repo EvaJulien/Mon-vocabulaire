@@ -35,7 +35,19 @@ h1{font-size:clamp(24px,5vw,32px);line-height:1.05;letter-spacing:-.02em;margin:
 .goal .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
 .score{text-align:center;margin-top:14px}
 .score b{display:block;font-size:clamp(52px,13vw,76px);font-weight:800;line-height:1;letter-spacing:-.03em;color:var(--accent);font-variant-numeric:tabular-nums}
-.score span{font-size:14px;opacity:.85}
+.score{display:block;margin-left:auto;margin-right:auto;background:none;border:0;color:inherit;font:inherit;cursor:pointer;border-radius:14px;padding:2px 18px}
+.score:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.score span{font-size:14px;opacity:.9}
+.qm{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font:700 12px Lexend,sans-serif;font-style:normal;margin-left:4px;vertical-align:1px}
+.hbox{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:16px 0 6px}
+.hb{border:2px solid var(--line);border-radius:10px;text-align:center;padding:8px 0;background:var(--soft);overflow:hidden;min-width:0}
+.hb small{display:block;font-size:11px;letter-spacing:-.02em;color:var(--mut);white-space:nowrap}
+.hb b{display:block;font-size:17px;font-weight:800;color:var(--btn)}
+.hb.crown{border-color:var(--btn);background:color-mix(in srgb,var(--accent) 35%,var(--card))}
+.harrow{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:6px}
+.harrow svg{flex:none}
+.hok{color:var(--green)}.hko{color:var(--red)}
+.hlist{padding-left:20px;margin:10px 0 0}.hlist li{margin:4px 0}
 .score.pop b{animation:pop2 .6s}
 @keyframes pop2{40%{transform:scale(1.12)}}
 nav{display:flex;gap:4px;margin-top:12px}
