@@ -145,7 +145,7 @@ let backend = null;
 let framed = false;
 let session = null;
 let popBox = -1, popScore = false;
-const ui = { q: '', libLang: null, openId: null, importText: '', addLang: 'en', addLib: '__auto', addNew: false, editLib: null, confirm: null, newLib: false, restore: null, backupText: '' };
+const ui = { theme: 'all', q: '', libLang: null, openId: null, importText: '', addLang: 'en', addLib: '__auto', addNew: false, editLib: null, confirm: null, newLib: false, restore: null, backupText: '' };
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -186,7 +186,7 @@ function mergeCfg(d) {
   }
   to = to.filter(x => x === 'fr' || ids.includes(x));
   if (!to.length) to = ['fr'];
-  out.filt = { on, to, mix, theme: f.theme && f.theme !== 'all' && out.libs.some(l => l.id === f.theme) ? f.theme : (f.lib && f.lib !== 'all' && out.libs.some(l => l.id === f.lib) ? f.lib : 'all') };
+  out.filt = { on, to, mix, hide: !!f.hide, theme: f.theme && f.theme !== 'all' && out.libs.some(l => l.id === f.theme) ? f.theme : (f.lib && f.lib !== 'all' && out.libs.some(l => l.id === f.lib) ? f.lib : 'all') };
   return out;
 }
 
@@ -337,7 +337,7 @@ function addLanguage(name, code) {
 }
 
 /* ---------- review ---------- */
-const inScope = w => cfg.filt.on.includes(wLang(w)) && (cfg.filt.theme === 'all' || cfg.filt.on.length !== 1 || wLib(w) === cfg.filt.theme);
+const inScope = w => cfg.filt.on.includes(wLang(w)) && (ui.theme === 'all' || cfg.filt.on.length !== 1 || wLib(w) === ui.theme);
 const answerLangs = () => { const f = cfg.filt; if (f.mix) return ['fr', ...f.on]; const t = f.to.filter(x => x === 'fr' || f.on.includes(x)); return t.length ? t : ['fr']; };
 const langName = id => id === 'fr' ? 'français' : lower(getLang(id).name);
 const langCode = id => id === 'fr' ? 'fr' : getLang(id).code;
@@ -397,6 +397,7 @@ function next() {
   const qs = questions(words.get(id), answerLangs(), cpIndex());
   const q = qs[Math.floor(Math.random() * qs.length)];
   s.cur = { id, ...q, given: '', delta: 0, from: 0, to: 0 };
+  ui.toCard = s.done > 0;
   s.state = 'ask';
 }
 function check(given, q) {
@@ -511,9 +512,21 @@ function ansChips() {
 }
 function renderFilters() {
   const f = cfg.filt, on = f.on;
-  let h = '<div class="filters">';
+  const arrow = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>`;
+  if (f.hide) {
+    const th = on.length === 1 && ui.theme !== 'all' ? getLib(ui.theme).name : 'tous les thèmes';
+    const S = f.mix ? 'mélange' : answerLangs().map(langName).join(', ');
+    const sum = `${cfg.langs.filter(l => on.includes(l.id)).map(l => l.name).join(', ')} · ${th} · réponse en ${S}`;
+    return `<button class="fsum" data-a="fold" aria-expanded="false"><span>${esc(sum)}</span>${arrow}</button>`;
+  }
+  let h = `<div class="filters"><button class="fold" data-a="fold" aria-expanded="true" aria-label="Cacher les choix">${arrow}</button>`;
   if (cfg.langs.length > 1) h += `<div class="fl"><span>Bibliothèques</span>${cfg.langs.map(l => `<button class="chip" data-a="tog" data-l="${l.id}" aria-pressed="${on.includes(l.id)}">${esc(l.name)}</button>`).join('')}</div>`;
-  if (on.length === 1 && libsOf(on[0]).length > 1) h += `<div class="fl"><span>Thème</span>${[['all', 'Tous'], ...libsOf(on[0]).map(l => [l.id, l.name])].map(([v, l]) => `<button class="chip" data-a="theme" data-val="${v}" aria-pressed="${f.theme === v}">${esc(l)}</button>`).join('')}</div>`;
+  if (on.length === 1 && libsOf(on[0]).length > 1) {
+    const tri = `<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="transform:rotate(${ui.themeOpen ? 90 : 0}deg)"><path d="M3 1.5 9.5 6 3 10.5z" fill="currentColor"/></svg>`;
+    const all = [['all', 'Tous'], ...libsOf(on[0]).map(l => [l.id, l.name])];
+    const shown = ui.themeOpen ? all : all.filter(([v]) => v === ui.theme);
+    h += `<div class="fl"><button class="tlab" data-a="topen" aria-expanded="${!!ui.themeOpen}">Thème ${tri}</button>${shown.map(([v, l]) => `<button class="chip" data-a="theme" data-val="${v}" aria-pressed="${ui.theme === v}">${esc(l)}</button>`).join('')}</div>`;
+  }
   h += `<div class="fl"><span>Répondre en</span>${ansChips()}</div>`;
   return h + '</div>';
 }
@@ -647,9 +660,14 @@ function render(fromSnap) {
   const ae = document.activeElement, keep = ae?.id;
   if (fromSnap && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.id !== 'ans') return;
   const ansVal = fromSnap ? $('#ans')?.value : null;
+  if (view !== 'rev') $('#main').style.paddingBottom = '';
   $('#main').innerHTML = view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : renderSet();
   if (view === 'rev') {
     const a = $('#ans');
+    const card = document.querySelector('.card');
+    // enough room below the card so it can always sit at the top of the screen, above the keyboard
+    $('#main').style.paddingBottom = card ? Math.max(90, innerHeight - card.offsetHeight - 20) + 'px' : '';
+    if (ui.toCard && card) { ui.toCard = false; card.scrollIntoView({ block: 'start' }); }
     if (a) { if (ansVal) a.value = ansVal; a.focus({ preventScroll: true }); } else if ($('#nextBtn') && matchMedia('(hover:hover)').matches) $('#nextBtn').focus({ preventScroll: true });
   } else if (keep === 'q' && $('#q')) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
 }
@@ -735,11 +753,13 @@ $('#main').addEventListener('click', e => {
     const id = b.dataset.l, on = cfg.filt.on;
     if (on.includes(id)) { if (on.length === 1) { toast('Garde au moins une bibliothèque active.'); return; } cfg.filt.on = on.filter(x => x !== id); }
     else cfg.filt.on = cfg.langs.map(l => l.id).filter(x => x === id || on.includes(x));
-    cfg.filt.theme = 'all';
+    ui.theme = 'all';
     if (!cfg.filt.to.some(x => x === 'fr' || cfg.filt.on.includes(x))) cfg.filt.to = ['fr'];
     saveCfg(); restartSession(); render();
   }
-  if (a === 'theme') { cfg.filt.theme = b.dataset.val; saveCfg(); restartSession(); render(); }
+  if (a === 'fold') { cfg.filt.hide = !cfg.filt.hide; saveCfg(); render(); }
+  if (a === 'topen') { ui.themeOpen = !ui.themeOpen; render(); }
+  if (a === 'theme') { if (!ui.themeOpen) { ui.themeOpen = true; render(); return; } ui.theme = b.dataset.val; ui.themeOpen = false; restartSession(); render(); }
   if (a === 'ans') {
     const v = b.dataset.val, f = cfg.filt;
     if (v === 'mix') { f.mix = true; }
@@ -775,7 +795,7 @@ $('#main').addEventListener('click', e => {
       cfg.filt.on = cfg.filt.on.filter(x => x !== id); if (!cfg.filt.on.length) cfg.filt.on = [cfg.langs[0].id];
       cfg.filt.to = cfg.filt.to.filter(x => x !== id); if (!cfg.filt.to.length) cfg.filt.to = ['fr'];
     }
-    if (cfg.filt.theme === id) cfg.filt.theme = 'all';
+    if (ui.theme === id) ui.theme = 'all';
     ui.confirm = null; ui.editLib = null; saveCfg(); restartSession(); render();
     toast(plural(gone.length, 'mot supprimé', 'mots supprimés'));
   }

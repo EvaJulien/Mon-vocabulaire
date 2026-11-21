@@ -14,7 +14,7 @@ Chaque personne qui installe l'appli a donc sa propre boîte de mots.
 | `app.js` | Tout le fonctionnement (révision, mots, réglages, sauvegarde) |
 | `style.css` | Le style |
 | `manifest.webmanifest`, `sw.js` | Ce qui rend l'appli installable et utilisable hors connexion |
-| `icons/` | Les icônes de l'appli |
+| `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` | Les icônes de l'appli |
 
 ## Tester sur l'ordinateur
 
@@ -24,7 +24,7 @@ Double-cliquer sur `index.html` suffit pour voir l'appli dans le navigateur
 ## Mettre en ligne (gratuit) pour l'installer sur les téléphones
 
 1. Sur github.com, créer un dépôt public (ex. `mon-vocabulaire`).
-2. « Add file » → « Upload files » : glisser **tout le contenu** de ce dossier (y compris le dossier `icons`).
+2. « Add file » → « Upload files » : sélectionner **tous les fichiers** de ce dossier et les glisser.
 3. Settings → Pages → Branch : `main` → Save. Après 1-2 minutes, l'adresse
    `https://<ton-pseudo>.github.io/mon-vocabulaire/` est prête.
 4. Sur iPhone : ouvrir l'adresse dans **Safari** → bouton Partager → « Sur l'écran d'accueil ».
@@ -50,3 +50,7 @@ téléphone ou après avoir vidé les données du navigateur.
 
 Onglet Ajouter → choisir la bibliothèque (langue) et le thème → coller une liste,
 un mot par ligne : `to drive = conduire`. Plusieurs traductions : `actually = en fait / en réalité`.
+Avec le thème « Automatique », l'appli range chaque mot toute seule d'après sa traduction
+(Verbes, Famille, Travail et chantier…). Une ligne `# Chantier` dans la liste range
+les mots qui suivent dans ce thème. Dans « Mes mots », « Ranger automatiquement » re-trie
+toute une bibliothèque.
