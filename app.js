@@ -363,7 +363,9 @@ function askable() { const S = answerLangs(), idx = cpIndex(); return w => inSco
 const inFilter = w => askable()(w);
 function dueList() {
   const ok = askable();
-  return [...words.values()].filter(w => isDue(w) && ok(w)).sort((a, b) => a.lvl - b.lvl || a.due - b.due).map(w => w.id);
+  const ids = [...words.values()].filter(w => isDue(w) && ok(w)).map(w => w.id);
+  for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+  return ids;
 }
 const newSession = extra => ({ queue: extra ? [] : dueList(), extra, cur: null, state: 'ask', missed: session?.missed || new Set(), done: 0, good: 0, combo: 0, bestCombo: 0, gained: 0, last: [] });
 function startSessionIfNeeded() {
@@ -400,9 +402,11 @@ function next() {
   ui.toCard = s.done > 0;
   s.state = 'ask';
 }
+const variants = t => { const v = String(t).replace(/\([^)]*\)/g, ' ').split(/[,\/;]/).map(x => x.trim()).filter(Boolean); return v.length ? v : [t]; };
 function check(given, q) {
-  const parts = split(given);
-  const one = g => q.answers.some(t => q.al === 'fr' ? frClose(g, t) : normT(t, q.al) === normT(g, q.al));
+  const parts = String(given).replace(/\([^)]*\)/g, ' ').split(/[,\/;]/).map(x => x.trim()).filter(Boolean);
+  const all = q.answers.flatMap(variants);
+  const one = g => all.some(t => q.al === 'fr' ? frClose(g, t) : normT(t, q.al) === normT(g, q.al));
   return one(given) || (parts.length > 1 && parts.every(one));
 }
 function submit(val) {
@@ -410,12 +414,9 @@ function submit(val) {
   if (!w || !val.trim()) return;
   if (s.state === 'ask') {
     s.cur.given = val;
-    if (check(val, s.cur)) { s.cur.loose = s.cur.al === 'fr' && !s.cur.answers.some(t => norm(t) === norm(val)); grade(w, true); s.state = 'right'; }
+    if (check(val, s.cur)) { s.cur.loose = s.cur.al === 'fr' && !s.cur.answers.flatMap(variants).some(t => norm(t) === norm(val)); grade(w, true); s.state = 'right'; }
     else { grade(w, false); s.state = 'wrong'; }
     render();
-  } else if (s.state === 'wrong') {
-    if (check(val, s.cur)) { next(); render(); }
-    else { const i = $('#ans'); i.value = ''; i.placeholder = 'Pas tout à fait, retape-la'; }
   }
 }
 function touchDay() {
@@ -550,15 +551,15 @@ function renderRev() {
   const flagTxt = (q.pl === 'fr' ? 'Français' : getLang(q.pl).name) + ' → ' + ansName;
   let fb = '';
   if (s.state === 'right') fb = `<div class="fb ok">Juste ! <span class="pts">${q.delta > 0 ? '+' + q.delta + ' pts' : ''}</span>${move}${q.to === TOP && q.from !== TOP ? ' · mot maîtrisé !' : ''}${q.loose ? `<small>Bonne réponse ! Orthographe exacte : ${esc(q.answers.join(' ou '))}</small>` : q.answers.length > 1 ? `<small>Toutes les réponses : ${esc(q.answers.join(' ou '))}</small>` : ''}</div>`;
-  if (s.state === 'wrong') fb = `<div class="fb ko">Ta réponse : <span class="yours">${esc(q.given)}</span><span class="right">${esc(q.answers.join(' ou '))}</span>${q.answers.length > 1 ? '<small>Recopie une seule de ces réponses.</small>' : ''}<small>${q.delta < 0 ? `<span class="pts">${q.delta} pts</span> · ` : ''}retour en case Nouv.</small></div>`;
+  if (s.state === 'wrong') fb = `<div class="fb ko">Ta réponse : <span class="yours">${esc(q.given)}</span><span class="right">${esc(q.answers.join(' ou '))}</span><small>${q.delta < 0 ? `<span class="pts">${q.delta} pts</span> · ` : ''}retour en case Nouv.</small></div>`;
   const prog = s.extra ? `Entraînement libre · ${s.done}` : `Encore ${s.queue.length + (s.state === 'ask' ? 1 : 0)} à revoir`;
   return head + `<div class="card ${cls}">
     <div class="dir"><span class="flag">${esc(flagTxt)}</span><span>${s.combo >= 3 ? `<span class="combo">Série de ${s.combo}</span> · ` : ''}${prog}</span></div>
     <div class="word" lang="${esc(langCode(q.pl))}">${esc(prompt)}</div>
     ${fb}
     <form id="f" autocomplete="off" style="margin-top:14px">
-      ${s.state === 'right' ? '' : `<input id="ans" lang="${esc(langCode(q.al))}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${s.state === 'wrong' ? (q.answers.length > 1 ? 'Recopie une des réponses' : 'Retape la bonne réponse') : 'En ' + esc(ansName) + '…'}" aria-label="Ta réponse en ${esc(ansName)}">`}
-      <div class="row">${s.state === 'right' ? `<button class="btn grow" type="button" data-a="next" id="nextBtn">Mot suivant</button>` : `<button class="btn grow" type="submit">${s.state === 'wrong' ? 'Valider' : 'Vérifier'}</button>`}</div>
+      ${s.state !== 'ask' ? '' : `<input id="ans" lang="${esc(langCode(q.al))}" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${'En ' + esc(ansName) + '…'}" aria-label="Ta réponse en ${esc(ansName)}">`}
+      <div class="row">${s.state !== 'ask' ? `<button class="btn grow" type="button" data-a="next" id="nextBtn">Mot suivant</button>` : `<button class="btn grow" type="submit">Vérifier</button>`}</div>
       ${s.state === 'wrong' && q.addTo ? `<div class="row"><button class="btn link" type="button" data-a="mine">Ma réponse était juste aussi : l'ajouter</button></div>` : ''}
     </form>
   </div>`;
@@ -841,7 +842,7 @@ $('#main').addEventListener('change', e => {
   }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && view === 'rev' && session?.state === 'right' && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); next(); render(); }
+  if (e.key === 'Enter' && view === 'rev' && (session?.state === 'right' || session?.state === 'wrong') && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); next(); render(); }
 });
 
 applyTheme();
