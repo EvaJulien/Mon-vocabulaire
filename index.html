@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.7.0">
+<link rel="stylesheet" href="style.css?v=1.8.0">
 </head>
 <body>
 <header>
@@ -30,7 +30,7 @@
     </div>
     <div class="boxes" id="boxes" aria-label="Tes mots par case"></div>
     <div class="goal" id="goal"></div>
-    <div class="score" id="score"><b id="sScore">0</b><span id="sBest">points</span></div>
+    <button class="score" id="score" aria-label="Comment marchent les points ?"><b id="sScore">0</b><span><span id="sBest">points</span> <i class="qm" aria-hidden="true">?</i></span></button>
     <nav role="tablist">
       <button role="tab" aria-selected="true" data-v="rev">Réviser</button>
       <button role="tab" aria-selected="false" data-v="lib">Mes mots</button>
@@ -41,7 +41,7 @@
 <main class="wrap" id="main"></main>
 <div id="toast" role="status"><span id="toastT"></span><button id="toastB" type="button">Annuler</button></div>
 
-<script src="app.js?v=1.7.0"></script>
+<script src="app.js?v=1.8.0"></script>
 <script>
 if('serviceWorker' in navigator && location.protocol!=='file:'){
   window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(function(r){ r.update(); }).catch(function(){}); });
