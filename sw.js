@@ -1,6 +1,6 @@
 /* Service worker : garde l'appli disponible hors connexion.
    Change VERSION à chaque mise à jour pour que les téléphones récupèrent la nouvelle version. */
-var VERSION = 'mon-vocabulaire-v1.2.1';
+var VERSION = 'mon-vocabulaire-v1.3.0';
 var SHELL = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', function(e){

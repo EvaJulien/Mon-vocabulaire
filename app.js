@@ -33,31 +33,80 @@ to be cold = avoir froid
 today = aujourd'hui
 Saturday = samedi`;
 const THEMES = [
-  ['Politesse et expressions', "bonjour salut merci s'il_vous_plait s'il_te_plait pardon excusez-moi excuse-moi au_revoir bienvenue oui non d'accord bonsoir bonne_nuit de_rien felicitations bravo enchante desole"],
-  ['Temps et calendrier', "lundi mardi mercredi jeudi vendredi samedi dimanche janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre aujourd'hui demain hier semaine mois annee an jour matin soir nuit midi minuit heure minute seconde week-end saison printemps ete automne hiver tous_les_jours toujours jamais souvent parfois maintenant tard tot bientot date anniversaire"],
-  ['Nombres', "zero un deux trois quatre cinq six sept huit neuf dix onze douze treize quatorze quinze seize vingt trente quarante cinquante soixante cent mille million premier deuxieme troisieme moitie nombre numero"],
-  ['Famille et relations', "mere pere maman papa frere soeur fils fille enfant bebe mari femme epouse copine copain petite_amie petit_ami ami amie parents grand-mere grand-pere oncle tante cousin cousine neveu niece famille relation couple mariage voisin voisine homme garcon"],
-  ['Travail et chantier', "travail boulot batiment construction chantier ouvrier electricien plombier macon patron chef collegue client outil marteau perceuse tournevis cable fil mur toit beton ciment brique echelle casque bureau reunion salaire entreprise societe metier apprenti apprentissage plan electricite prise interrupteur tableau_electrique gaine securite contrat stage formation bts"],
-  ['Maison', "maison appartement chambre cuisine salle_de_bain salon toilettes porte fenetre lit table chaise canape cle loyer jardin garage escalier etage lumiere meuble placard frigo douche"],
-  ['Nourriture et boissons', "eau pain viande poisson poulet boeuf porc riz fruit legume pomme banane orange cafe the biere vin lait oeuf fromage repas petit-dejeuner dejeuner diner restaurant faim soif sucre sel poivre soupe gateau nouilles kimchi boisson nourriture"],
-  ['Transports et voyage', "voiture camion bus train avion metro velo moto gare aeroport billet route rue autoroute passeport visa valise hotel voyage taxi carte_d'embarquement vol arret station trajet essence parking"],
-  ['Corps et santé', "tete main pied bras jambe oeil yeux bouche dent dos coeur ventre nez oreille cheveux malade maladie medecin docteur hopital douleur pharmacie medicament sante fievre rhume blessure"],
-  ['Couleurs', "rouge bleu vert jaune noir blanc gris rose violet marron couleur"],
-  ['Argent et achats', "argent banque prix euro euros won compte carte_bancaire magasin marche supermarche cher bon_marche monnaie facture ticket caisse"],
-  ['Pays et langues', "france coree anglais francais coreen pays ville langue nationalite seoul marseille angleterre amerique etats-unis europe asie japon chine"]
+  ['Politesse et expressions',
+   "bonjour salut merci s'il vous plait s'il te plait pardon excusez moi excuse moi au revoir bienvenue oui non d'accord bonsoir bonne nuit de rien felicitations bravo enchante desole bonne journee a bientot a plus tard ca va comment ca va peut etre bien sur",
+   "hello hi thanks thank you please sorry excuse me goodbye bye welcome yes no okay ok good morning good evening good night you're welcome congratulations nice to meet you how are you maybe of course"],
+  ['Chiffres et nombres',
+   "zero un deux trois quatre cinq six sept huit neuf dix onze douze treize quatorze quinze seize vingt trente quarante cinquante soixante cent cents mille million milliard premier premiere deuxieme troisieme quatrieme cinquieme dernier moitie quart double nombre numero chiffre douzaine",
+   "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion first second third fourth fifth last half quarter number dozen"],
+  ['Temps et calendrier',
+   "lundi mardi mercredi jeudi vendredi samedi dimanche janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre aujourd'hui demain hier semaine mois annee an ans jour jours matin apres midi soir soiree nuit midi minuit heure heures minute seconde week end saison printemps ete automne hiver tous les jours toujours jamais souvent parfois maintenant tard tot bientot date anniversaire calendrier horaire",
+   "monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december today tomorrow yesterday week month year day morning afternoon evening night noon midnight hour minute second weekend season spring summer autumn fall winter always never often sometimes now late early soon date birthday o'clock"],
+  ['Famille et relations',
+   "mere pere maman papa frere soeur fils fille enfant enfants bebe mari femme epouse copine copain petite amie petit ami ami amie amis parents grand mere grand pere oncle tante cousin cousine neveu niece famille relation couple mariage marie voisin voisine homme garcon gens personne",
+   "mother father mom mum dad brother sister son daughter child children baby husband wife girlfriend boyfriend friend friends parents grandmother grandfather uncle aunt cousin nephew niece family relationship couple wedding married neighbour neighbor man woman boy girl people person"],
+  ['Travail et chantier',
+   "travail boulot travailler batiment construction chantier ouvrier electricien plombier macon patron chef collegue client outil outils marteau perceuse tournevis cable fil mur toit beton ciment brique echelle casque bureau reunion salaire entreprise societe metier apprenti apprentissage plan electricite prise interrupteur tableau electrique gaine securite contrat stage formation bts vis clou scie metre niveau peinture",
+   "work job worker building construction site electrician plumber mason boss manager colleague coworker customer client tool tools hammer drill screwdriver cable wire wall roof concrete cement brick ladder helmet office meeting salary company business apprentice plan electricity socket outlet switch safety contract training screw nail saw tape paint"],
+  ['Maison',
+   "maison appartement chambre cuisine salle de bain salon toilettes porte fenetre lit table chaise canape cle loyer jardin garage escalier etage lumiere meuble placard frigo douche lampe sol plafond",
+   "house home flat apartment bedroom kitchen bathroom living room toilet door window bed table chair sofa couch key rent garden yard garage stairs floor light furniture cupboard fridge shower lamp ceiling"],
+  ['Nourriture et boissons',
+   "eau pain viande poisson poulet boeuf porc riz fruit fruits legume legumes pomme banane orange cafe the biere vin lait oeuf oeufs fromage repas petit dejeuner dejeuner diner restaurant faim soif sucre sel poivre soupe gateau nouilles kimchi boisson nourriture manger boire",
+   "water bread meat fish chicken beef pork rice fruit vegetable vegetables apple banana orange coffee tea beer wine milk egg eggs cheese meal breakfast lunch dinner restaurant hungry thirsty sugar salt pepper soup cake noodles drink food eat"],
+  ['Transports et voyage',
+   "voiture camion bus train avion metro velo moto gare aeroport billet route rue autoroute passeport visa valise hotel voyage voyager taxi vol arret station trajet essence parking conduire",
+   "car truck lorry bus train plane airplane subway underground metro bike bicycle motorbike station airport ticket road street highway motorway passport visa suitcase luggage hotel trip travel journey taxi flight stop fuel petrol gas parking drive"],
+  ['Corps et santé',
+   "tete main mains pied pieds bras jambe jambes oeil yeux bouche dent dents dos coeur ventre nez oreille oreilles cheveux malade maladie medecin docteur hopital douleur pharmacie medicament sante fievre rhume blessure",
+   "head hand hands foot feet arm leg legs eye eyes mouth tooth teeth back heart stomach belly nose ear ears hair sick ill illness doctor hospital pain pharmacy medicine health fever cold injury"],
+  ['Couleurs',
+   "rouge bleu bleue vert verte jaune noir noire blanc blanche gris grise rose violet marron couleur",
+   "red blue green yellow black white grey gray pink purple brown colour color"],
+  ['Argent et achats',
+   "argent banque prix euro euros won compte carte bancaire magasin marche supermarche cher chere bon marche monnaie facture ticket caisse acheter payer vendre",
+   "money bank price euro euros won account card shop store market supermarket expensive cheap change bill receipt cashier buy pay sell"],
+  ['Pays et langues',
+   "france coree anglais anglaise francais francaise coreen coreenne pays ville langue nationalite seoul marseille angleterre amerique etats unis europe asie japon chine",
+   "france korea english french korean country city town language nationality seoul marseille england america usa europe asia japan china"]
 ];
-const ADJ = "grand petit bon mauvais beau belle joli nouveau nouvelle vieux vieille jeune facile difficile heureux heureuse triste fatigue content malade chaud froid rapide lent fort faible gentil mechant drole calme occupe libre long court haut bas proche loin";
+const ADJ = "grand grande petit petite bon bonne mauvais mauvaise beau belle joli jolie nouveau nouvelle vieux vieille jeune facile difficile heureux heureuse triste fatigue fatiguee content contente chaud chaude froid froide rapide lent lente fort forte faible gentil gentille mechant drole calme occupe libre long longue court courte haut haute bas basse proche loin";
+const ADJ_EN = "big large small little good bad beautiful pretty nice new old young easy difficult hard happy sad tired glad hot warm cold fast quick slow strong weak kind funny calm busy free long short high low near far";
 const deaccent = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 const frKey = s => deaccent(String(s).toLowerCase()).replace(/[’‘`´]/g, "'").replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[^a-z0-9' -]/g, ' ').replace(/\s+/g, ' ').trim();
-const THEME_SETS = THEMES.map(([name, list]) => [name, list.split(' ').map(x => x.replace(/_/g, ' '))]);
-const ADJ_SET = ADJ.split(' ');
+// tokens: lower, no accents, hyphens/apostrophes as spaces, leading article removed when something follows
+const tok = (s, en) => {
+  let t = ' ' + frKey(s).replace(/[-']/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+  t = en ? t.replace(/^ (to|a|an|the) (?=\S)/, ' ') : t.replace(/^ (le|la|les|l|un|une|des|du|de la|d) (?=\S)/, ' ');
+  return t;
+};
+function splitKeys(list) {
+  // multi-word keys are the known phrases; everything else is one word
+  const phrases = ["s'il vous plait", "s'il te plait", 'excusez moi', 'excuse moi', 'au revoir', "d'accord", 'bonne nuit', 'de rien', 'bonne journee', 'a bientot', 'a plus tard', 'ca va', 'comment ca va', 'peut etre', 'bien sur', 'thank you', 'excuse me', 'good morning', 'good evening', 'good night', "you're welcome", 'nice to meet you', 'how are you', 'of course', 'apres midi', 'week end', 'tous les jours', 'petite amie', 'petit ami', 'grand mere', 'grand pere', 'tableau electrique', 'salle de bain', 'living room', 'petit dejeuner', 'carte bancaire', 'bon marche', 'etats unis'];
+  let rest = ' ' + list + ' ';
+  const keys = [];
+  phrases.forEach(p => { if (rest.includes(' ' + p + ' ')) { keys.push(p); rest = rest.replace(' ' + p + ' ', ' '); } });
+  return keys.concat(rest.split(' ').filter(Boolean)).map(k => k.replace(/'/g, ' '));
+}
+const THEME_SETS = THEMES.map(([name, fr, en]) => [name, splitKeys(fr), splitKeys(en)]);
+const ADJ_SET = splitKeys(ADJ), ADJ_EN_SET = splitKeys(ADJ_EN);
 function guessTheme(w, langCode) {
-  const frs = w.fr.map(frKey);
-  const has = k => frs.some(f => f === k || (' ' + f + ' ').includes(' ' + k + ' ') || f.startsWith(k + ' ') || f.startsWith("l'" + k) || f.startsWith("d'" + k));
+  const learned = cfg.learn || {};
+  for (const f of w.fr) { const k = frKey(f); if (learned[k]) return learned[k]; }
+  const frs = w.fr.map(f => tok(f, false));
+  const ens = langCode === 'en' ? w.en.map(t => tok(t, true)) : [];
+  const hit = (arr, k) => arr.some(t => t.includes(' ' + k + ' '));
+  if ([...w.fr, ...w.en].some(x => /\d/.test(x))) return 'Chiffres et nombres';
   if (langCode === 'en' && w.en.some(t => /^to\s/i.test(t.trim()))) return 'Verbes';
-  for (const [name, keys] of THEME_SETS) if (keys.some(has)) return name;
-  if (frs.some(f => /^(avoir|etre|faire|aller|se|s') /.test(f) || (!f.includes(' ') && /(er|ir|oir|re)$/.test(f) && f.length > 3))) return 'Verbes';
-  if (ADJ_SET.some(has)) return 'Adjectifs';
+  let best = null, bestN = 0;
+  for (const [name, fk, ek] of THEME_SETS) {
+    const n = fk.filter(k => hit(frs, k)).length + ek.filter(k => hit(ens, k)).length;
+    if (n > bestN) { best = name; bestN = n; }
+  }
+  if (best) return best;
+  const plain = w.fr.map(frKey);
+  if (plain.some(f => /^(avoir|etre|faire|aller|se|s') /.test(f) || (!f.includes(' ') && /(er|ir|oir|re)$/.test(f) && f.length > 3))) return 'Verbes';
+  if (ADJ_SET.some(k => hit(frs, k)) || ADJ_EN_SET.some(k => hit(ens, k))) return 'Adjectifs';
   return 'Divers';
 }
 // French answers: tolerant (accents, articles, plurals, small typos)
@@ -650,7 +699,9 @@ $('#main').addEventListener('submit', e => {
     const w = words.get(f.dataset.id);
     const t = split($('#e-t').value), fr = split($('#e-fr').value);
     if (!t.length || !fr.length) { toast('Il faut au moins un mot de chaque côté.'); return; }
-    update(w, { en: t, fr, lib: $('#e-lib').value }); ui.openId = null; toast('Modifié'); render();
+    const nl = $('#e-lib').value;
+    if (nl !== wLib(w)) { cfg.learn = { ...(cfg.learn || {}) }; fr.forEach(f => cfg.learn[frKey(f)] = getLib(nl).name); saveCfg(); }
+    update(w, { en: t, fr, lib: nl }); ui.openId = null; toast('Modifié'); render();
   }
   if (f.id === 'lf') {
     const l = cfg.libs.find(x => x.id === f.dataset.id);
