@@ -1,10 +1,10 @@
 /* Service worker : garde l'appli disponible hors connexion.
    Change VERSION à chaque mise à jour pour que les téléphones récupèrent la nouvelle version. */
-var VERSION = 'mon-vocabulaire-v1.5.0';
+var VERSION = 'mon-vocabulaire-v1.5.1';
 var SHELL = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', function(e){
-  e.waitUntil(caches.open(VERSION).then(function(c){ return c.addAll(SHELL); }).then(function(){ return self.skipWaiting(); }));
+  e.waitUntil(caches.open(VERSION).then(function(c){ return c.addAll(SHELL.map(function(u){ return new Request(u, {cache: 'reload'}); })); }).then(function(){ return self.skipWaiting(); }));
 });
 self.addEventListener('activate', function(e){
   e.waitUntil(caches.keys().then(function(keys){
@@ -16,7 +16,7 @@ self.addEventListener('fetch', function(e){
   var url=new URL(req.url);
   // Fichiers de l'appli : réseau d'abord (pour avoir les mises à jour), cache si hors connexion
   if(url.origin===location.origin){
-    e.respondWith(fetch(req).then(function(res){
+    e.respondWith(fetch(req, {cache: 'no-cache'}).then(function(res){
       if(res && res.ok){ var copy=res.clone(); caches.open(VERSION).then(function(c){ c.put(req, copy); }); }
       return res;
     }).catch(function(){ return caches.match(req, {ignoreSearch:true}).then(function(r){ return r || caches.match('./index.html'); }); }));
