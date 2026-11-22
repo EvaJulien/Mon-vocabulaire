@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.5.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -225,7 +225,7 @@ function remoteBackend(db, id) {
     });
     words = m;
     applyTheme();
-    if (first) { first = false; startSessionIfNeeded(); }
+    if (first) { first = false; startSessionIfNeeded(); firstRun(); }
     render(true);
   }, () => { clearTimeout(timer); setStatus('Mots indisponibles pour le moment.'); });
   return {
@@ -270,7 +270,7 @@ async function boot() {
   else {
     backend = localBackend();
     setStatus(framed ? 'Mode hors ligne : les mots restent sur cet appareil.' : '');
-    applyTheme(); startSessionIfNeeded(); checkBadges(); render();
+    applyTheme(); startSessionIfNeeded(); checkBadges(); firstRun(); render();
     checkUpdate(false);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
   }
@@ -282,6 +282,7 @@ function lum(hex) {
   return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
 }
 function applyTheme() {
+  if (!['auto', 'light', 'dark'].includes(cfg.theme.mode)) cfg.theme.mode = 'auto';
   const t = cfg.theme, p = t.preset === 'custom' ? { main: t.main, accent: t.accent } : (PRESETS[t.preset] || PRESETS.foret);
   const r = document.documentElement.style;
   r.setProperty('--main', p.main);
@@ -439,7 +440,15 @@ const SECRETS = [
   ['escargot', 'Escargot', 'Finir un sprint sans aucune bonne réponse.']
 ];
 const SEOLLAL = ['2026-02-17', '2027-02-06', '2028-01-26', '2029-02-13', '2030-02-03', '2031-01-23', '2032-02-11', '2033-01-31', '2034-02-19', '2035-02-08', '2036-01-28'];
-const GOAL_COL = { 10: '#3b82f6', 20: '#16a34a', 30: '#f59e0b', 50: '#e11d48' };
+// calendar colours for the 10 / 20 / 30 / 50 goals, by theme (chosen in the settings)
+const CAL_THEMES = {
+  feu: ['Feu', ['#f2b33d', '#ec7a1c', '#d23a22', '#8e1b2e']],
+  foret: ['Forêt', ['#8fcf7a', '#3fa34d', '#1e6b3a', '#0f3b24']],
+  ocean: ['Océan', ['#5fd3c9', '#2a9fd6', '#1f5fae', '#16306e']],
+  crepuscule: ['Crépuscule', ['#f29ac1', '#c96bd1', '#8a4fc0', '#4d2a7c']],
+  classique: ['Classique', ['#3b82f6', '#16a34a', '#f59e0b', '#e11d48']]
+};
+const goalCol = v => (CAL_THEMES[cfg.calTheme] || CAL_THEMES.feu)[1][[10, 20, 30, 50].indexOf(v) < 0 ? 1 : [10, 20, 30, 50].indexOf(v)];
 const TIER_COL = ['#c4874f', '#9aa7b8', '#e8b923', '#5cc6cf', '#a77bf0', '#1b1b22'];
 const isKorean = id => { const l = id && id !== 'fr' && getLang(id); return !!l && (l.code === 'ko' || /cor/i.test(l.name)); };
 function achValues() {
@@ -822,6 +831,10 @@ const RULES = {
   strict: 'Implacable : aucune faute de frappe tolérée.',
   trick: 'Trompeur : la langue de réponse change à chaque mot.'
 };
+const REGION = from => /Japon|Corée|Himalaya|Chine|Inde/.test(from) ? 'Asie' : /Égypte|Arabie|Afrique|Perse/.test(from) ? 'Afrique et Moyen-Orient' : /^Amérique/.test(from) ? 'Amériques' : /Partout/.test(from) ? 'Monde entier' : 'Europe';
+const REGIONS = ['Europe', 'Asie', 'Amériques', 'Afrique et Moyen-Orient', 'Monde entier'];
+const RARS = ['Commun', 'Rare', 'Nocturne', 'Saisonnier', 'Légendaire'];
+const RULE_NAMES = { classic: 'Classique · 10 mots, 3 vies', colossus: 'Colosse · 20 mots, 5 vies', fragile: 'Fragile · 1 vie', chrono: 'Chrono · 10 s par mot', hydra: 'Hydre · gagne des mots', greedy: 'Vorace · récupère de la vie', strict: 'Implacable · aucune faute', trick: 'Trompeur · langue qui change' };
 const RAR_COL = { Commun: '#6b7f72', Rare: '#3b82f6', Nocturne: '#6d3fb0', Saisonnier: '#d97706', Légendaire: '#b91c1c' };
 const BOSS_MIN = 20, CHRONO_S = 10;
 const beast = id => BEASTS.find(x => x.id === id);
@@ -982,7 +995,7 @@ function renderBoss() {
     <div class="arena">${beastImg(be, 'beast mid' + (res && q.ok ? ' hit' : ''))}<div class="arena-top"><b>${esc(be.name)}</b><div class="lives">${hearts(b.lives, b.maxLives)}</div></div>${hp}</div>
     <div class="dir" style="margin-top:10px"><span class="flag">${esc(flagOf(q))}</span><span>Mot ${b.i + 1}/${n}${chrono && !res ? ` · <b id="btime">${left}</b> s` : ''}</span></div>
     ${chrono && !res ? `<div class="tbar"><i id="tbar" style="width:${left / CHRONO_S * 100}%"></i></div>` : ''}
-    <div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>
+    <div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>${sayBtn(q.prompt[0], q.pl)}
     ${res ? (q.timeout ? `<div class="flash ko">Trop lent ! La réponse était <b>${esc(q.answers.join(' ou '))}</b></div>` : resultBox(q, q.ok)) : ''}
     <form id="bf" autocomplete="off" style="margin-top:14px">${answerInput(q, res ? (b.lives <= 0 ? 'Entrée pour voir le résultat' : 'Entrée pour continuer') : 'En ' + langName(q.al) + '…', res ? 'next' : 'done')}<div class="row"><button class="btn grow" type="submit">${res ? (b.lives <= 0 || b.i + 1 >= n ? 'Voir le résultat' : 'Continuer') : 'Attaquer'}</button></div></form>
   </div>`;
@@ -992,14 +1005,23 @@ function renderBoss() {
 function renderBest() {
   const list = BEASTS.filter(x => x.has), bs = cfg.beasts || {};
   const got = list.filter(x => bs[x.id]?.wins).length;
-  const cards = list.map((be, i) => {
-    const e = bs[be.id] || {}, num = String(i + 1).padStart(3, '0');
+  const card = be => {
+    const e = bs[be.id] || {}, num = String(list.indexOf(be) + 1).padStart(3, '0');
     if (!e.seen) return `<button class="bcard" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}</span><div class="bq">?</div><b>???</b></button>`;
     return `<button class="bcard${e.wins ? ' on' : ''}" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}</span>${beastImg(be, 'bimg2' + (e.wins ? '' : ' locked'))}<b>${esc(be.name)}</b>${e.wins ? rarChip(be) : '<span class="hint">Pas encore vaincu</span>'}</button>`;
-  }).join('');
+  };
+  // sorting: by number, origin, rarity or type of fight (a creature with two rules is in both groups)
+  const sort = ui.bestSort || 'num';
+  const groups = sort === 'origin' ? REGIONS.map(r => [r, list.filter(b => REGION(b.from) === r)])
+    : sort === 'rar' ? RARS.map(r => [r, list.filter(b => b.rar === r)])
+    : sort === 'rule' ? Object.keys(RULE_NAMES).map(r => [RULE_NAMES[r], list.filter(b => b.rules.includes(r))])
+    : [['', list]];
+  const cards = groups.filter(g => g[1].length).map(([t, l]) => `${t ? `<h3 class="bgh">${esc(t)} <span class="note">${l.filter(b => bs[b.id]?.wins).length}/${l.length}</span></h3>` : ''}<div class="bgrid">${l.map(card).join('')}</div>`).join('');
+  const sorts = [['num', 'Numéro'], ['origin', 'Origine'], ['rar', 'Rareté'], ['rule', 'Type de combat']].map(([k, n]) => `<button class="chip" data-a="bestsort" data-k="${k}" aria-pressed="${sort === k}">${n}</button>`).join('');
   return `<section><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Bestiaire <span class="note">${got}/${list.length}</span></h2><button class="btn ghost" data-a="bestback">Retour</button></div>
     <p class="note">Chaque créature battue rejoint ton bestiaire. Certaines sont rares, d'autres ne sortent que la nuit, à la pleine lune ou à certaines périodes de l'année.</p>
-    <div class="bgrid">${cards}</div></section>${renderBeastView()}`;
+    <div class="fl" style="margin:8px 0 4px">${sorts}</div>
+    ${cards}</section>${renderBeastView()}`;
 }
 function renderBeastView() {
   const id = ui.beastView, be = id && beast(id);
@@ -1103,7 +1125,9 @@ function renderHeader() {
   const flame = '<svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M7 0c1 3 5 5 5 9.5A5 5 0 0 1 2 9.5C2 7 4 6 4 4c1.5 1 2 2.5 2 3.5C7.5 6 7.5 3 7 0z" fill="var(--accent)"/></svg>';
   $('#sStreak').innerHTML = `${ring(tc / g, 20, 3.5)}<span><b>${Math.min(tc, g)}/${g}</b> aujourd'hui</span><span class="sep">·</span>${flame}<span>${st ? `<b>${plural(st, 'jour', 'jours')}</b> d'affilée` : 'série à lancer'}</span>`;
   const lb = cfg.lastBadge;
-  $('#sBest').innerHTML = 'points · ' + esc(titleOf(sc)) + (lb ? `<img class="hbadge" src="badge-${esc(lb.img)}.webp" alt="">` : '');
+  $('#sBest').textContent = 'points · ' + titleOf(sc);
+  $('#lastBtn').innerHTML = lb ? `<img src="badge-${esc(lb.img)}.webp" alt=""><small>Dernier badge</small>` : '';
+  $('#lastBtn').style.visibility = lb ? '' : 'hidden';
   const counts = INTER.map((_, i) => all.filter(w => w.lvl === i).length);
   const max = Math.max(1, ...counts);
   const crown = '<svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><path d="M1 11 2 2l4.5 4L9 0l2.5 6L16 2l1 9z" fill="var(--accent)"/></svg>';
@@ -1140,7 +1164,8 @@ function renderFilters() {
 }
 function renderRev() {
   if (!words.size) return `<div class="empty"><h2>Ta boîte est vide</h2><p>Ajoute tes premiers mots pour commencer à réviser.</p><button class="btn" data-a="goadd">Ajouter des mots</button></div>`;
-  const mode = ui.mode || 'rev';
+  if (!MODES.some(m => m[0] === ui.mode)) ui.mode = 'rev';
+  const mode = ui.mode;
   if (mode !== 'rev') return modeBar() + renderFilters() + (mode === 'sprint' ? renderSprint() : mode === 'boss' ? renderBoss() : renderDuel());
   const s = session;
   const head = modeBar() + renderFilters();
@@ -1162,13 +1187,14 @@ function renderRev() {
   if (s.state === 'right') fb = `<div class="fb ok">Juste ! <span class="pts">${q.delta > 0 ? '+' + q.delta + ' pts' : ''}</span>${move}${q.to === TOP && q.from !== TOP ? ' · mot maîtrisé !' : ''}${q.loose ? `<small>Bonne réponse ! Orthographe exacte : ${esc(q.answers.join(' ou '))}</small>` : q.answers.length > 1 ? `<small>Toutes les réponses : ${esc(q.answers.join(' ou '))}</small>` : ''}</div>`;
   if (s.state === 'wrong') fb = `<div class="fb ko">Ta réponse : <span class="yours">${esc(q.given)}</span><span class="right">${esc(q.answers.join(' ou '))}</span><small>${q.delta < 0 ? `<span class="pts">${q.delta} pts</span> · ` : ''}retour en case Nouv.</small>${mustRetype(q) ? `<small><b>Recopie ${q.answers.flatMap(variants).length > 1 ? 'une de ces réponses' : 'la bonne réponse'} pour continuer.</b></small>` : ''}</div>`;
   const retype = s.state === 'wrong' && mustRetype(q);
+  if (s.state === 'ask') autoSay('q' + s.done + q.id, q.prompt[0], q.pl); else autoSay('a' + s.done + q.id, q.answers[0], q.al);
   const ph = s.state === 'ask' ? 'En ' + ansName + '…' : retype ? 'Recopie en ' + ansName + '…' : 'Entrée pour le mot suivant';
   const prog = s.extra ? `Entraînement libre · ${s.done}` : `Encore ${s.queue.length + (s.state === 'ask' ? 1 : 0)} à revoir`;
   const party = ui.celebrate ? `<div class="party"><b>Ton premier mot maîtrisé !</b><p>Ça fait au moins 2 mois que tu révises régulièrement. Bravo, continue comme ça.</p>${SUPPORT_URL ? `<p>Si l'appli t'aide à progresser, tu peux soutenir son développement.</p><div class="row"><a class="btn" href="${esc(SUPPORT_URL)}" target="_blank" rel="noopener">Soutenir l'appli</a><button class="btn ghost" type="button" data-a="party">Plus tard</button></div>` : `<div class="row"><button class="btn" type="button" data-a="party">Merci !</button></div>`}</div>` : '';
   return head + party + `<div class="card ${cls}">
     <div class="dir"><span class="flag">${esc(flagTxt)}</span><span>${s.combo >= 3 ? `<span class="combo">Série de ${s.combo}</span> · ` : ''}${prog}</span></div>
-    <div class="word" lang="${esc(langCode(q.pl))}">${esc(prompt)}</div>
-    ${fb}
+    <div class="word" lang="${esc(langCode(q.pl))}">${esc(prompt)}</div>${sayBtn(q.prompt[0], q.pl)}
+    ${fb}${s.state !== 'ask' ? sayBtn(q.answers[0], q.al, 'Écouter la réponse') : ''}
     <form id="f" autocomplete="off" style="margin-top:14px">
       <input id="ans" lang="${esc(langCode(q.al))}" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="${s.state === 'ask' || retype ? 'done' : 'next'}" placeholder="${esc(ph)}" aria-label="Ta réponse en ${esc(ansName)}">
       <div class="row">${s.state === 'ask' ? `<button class="btn grow" type="submit">Vérifier</button>` : retype ? `<button class="btn grow" type="submit">Valider</button>` : `<button class="btn grow" type="submit" id="nextBtn">Mot suivant</button>`}</div>
@@ -1235,6 +1261,7 @@ function renderAdd() {
       <p class="hint">Plusieurs traductions possibles ? Sépare-les par « / ».</p>
       <div class="row"><button class="btn" type="submit">Ajouter</button></div>
     </form></section>
+  ${renderGen()}
   <section><h2>Importer une liste</h2>
     <p class="note" style="margin-top:0">Colle la liste que je te donne à la fin d'un cours. Un mot par ligne : <b>${esc(lower(L.name))} = français</b>. Une ligne <b># Chantier</b> range les mots qui suivent dans ce thème.</p>
     <form id="if"><textarea id="imp" rows="8" placeholder="to drive = conduire&#10;truck = camion">${esc(ui.importText)}</textarea>
@@ -1252,17 +1279,15 @@ function renderProg() {
     const d = new Date(start); d.setDate(start.getDate() + i);
     if (d > today) { cells += '<i class="c future"></i>'; continue; }
     const k = ymd(d), n = days[k] || 0, dg = dayGoal(k), lv = !n ? 0 : n < dg / 2 ? 1 : n < dg ? 2 : 3;
-    cells += `<i class="c l${lv}" style="--gc:${GOAL_COL[dg] || GOAL_COL[20]}" title="${d.toLocaleDateString('fr-FR')} : ${n} / ${dg}"></i>`;
+    cells += `<i class="c l${lv}" style="--gc:${goalCol(dg)}" title="${d.toLocaleDateString('fr-FR')} : ${n} / ${dg}"></i>`;
   }
   const vals = achValues();
   const nGot = ACH.reduce((n, a) => n + tierOf(a, vals[a.id]), 0);
   const achCard = a => {
     const v = vals[a.id], t = tierOf(a, v), nx = a.steps[t];
     const from = t ? a.steps[t - 1] : 0;
-    const pic = `<button class="bpic" data-a="bview" data-k="${a.id}" data-t="${Math.max(1, t)}" aria-label="Voir le badge"><img class="bimg${t ? '' : ' locked'}" src="badge-${a.img}-${Math.max(1, t)}.webp" alt="" loading="lazy"></button>`;
-    const minis = `<div class="minis">${a.steps.map((_, i) => `<button data-a="bview" data-k="${a.id}" data-t="${i + 1}" aria-label="${esc(i < t ? a.names[i] : 'Niveau ' + (i + 1))}"${i + 1 === t ? ' aria-current="true"' : ''}><img class="${i < t ? '' : 'locked'}" src="badge-${a.img}-${i + 1}.webp" alt="" loading="lazy"></button>`).join('')}</div>`;
+    const pic = `<button class="bpic" data-a="bview" data-k="${a.id}" data-t="${Math.max(1, t)}" aria-label="Voir le badge">${t ? `<img class="bimg" src="badge-${a.img}-${t}.webp" alt="" loading="lazy">` : '<span class="qbox">?</span>'}</button>`;
     return `<div class="badge${t ? ' on' : ''}${t === a.steps.length ? ' maxed' : ''}">${pic}<b>${t ? esc(a.names[t - 1]) : esc(a.label)}</b><span>${t ? esc(a.label) : `${fmt(a.steps[0])} ${esc(a.unit)}`}</span>
-      ${minis}
       ${nx ? `<div class="bar3"><i style="width:${Math.min(100, Math.round((v - from) / (nx - from) * 100))}%"></i></div><span>${fmt(Math.min(v, nx))} / ${fmt(nx)} pour <b>${esc(a.names[t])}</b></span>` : '<span><b>Niveau maximum !</b></span>'}</div>`;
   };
   const sec = cfg.secrets || {}, nSec = SECRETS.filter(x => sec[x[0]]).length;
@@ -1274,24 +1299,38 @@ function renderProg() {
     <div class="ptitle"><div><span class="note">Ton titre</span><b class="tname">${esc(titleOf(sc))}</b><span class="note">${topMsg}</span></div>
       ${nt ? `<div class="bar2"><i style="width:${Math.round((sc - prevT[0]) / (nt[0] - prevT[0]) * 100)}%"></i></div>` : ''}${last}</div>
     <div class="pgoal">${ring(tc / g, 96, 10, 'var(--btn)')}<div><b class="big2">${Math.min(tc, g)} / ${g}</b><p style="margin:2px 0 8px">${tc >= g ? 'Défi du jour réussi !' : `bonnes réponses aujourd'hui, encore ${g - tc} pour réussir le défi`}</p>
-      <div class="fl"><span>Objectif</span>${[10, 20, 30, 50].map(v => `<button class="chip gchip" data-a="goal" data-val="${v}" aria-pressed="${g === v}" style="--gc:${GOAL_COL[v]}">${v}</button>`).join('')}</div></div></div>
+      <div class="fl"><span>Objectif</span>${[10, 20, 30, 50].map(v => `<button class="chip gchip" data-a="goal" data-val="${v}" aria-pressed="${g === v}" style="--gc:${goalCol(v)}">${v}</button>`).join('')}</div></div></div>
   </section>
   <section><h2>${st ? `${plural(st, 'jour', 'jours')} d'affilée` : 'Ta série'}</h2>
     <p class="note" style="margin-top:0">Un jour compte quand tu réussis ton défi du jour.${S.best ? ` Record : ${plural(S.best, 'jour', 'jours')}.` : ''}</p>
     <div class="cal">${cells}</div>
-    <div class="legend"><span>Moins</span><i class="c l0"></i><i class="c l1" style="--gc:${GOAL_COL[g]}"></i><i class="c l2" style="--gc:${GOAL_COL[g]}"></i><i class="c l3" style="--gc:${GOAL_COL[g]}"></i><span>Défi réussi</span></div>
-    <div class="legend"><span>Défi de</span>${[10, 20, 30, 50].map(v => `<i class="c l3" style="--gc:${GOAL_COL[v]}"></i><span>${v}</span>`).join('')}</div>
+    <div class="legend"><span>Moins</span><i class="c l0"></i><i class="c l1" style="--gc:${goalCol(g)}"></i><i class="c l2" style="--gc:${goalCol(g)}"></i><i class="c l3" style="--gc:${goalCol(g)}"></i><span>Défi réussi</span></div>
+    <div class="legend"><span>Défi de</span>${[10, 20, 30, 50].map(v => `<i class="c l3" style="--gc:${goalCol(v)}"></i><span>${v}</span>`).join('')}</div>
   </section>
   <section><h2>Records</h2>
     <div class="recs"><div><b>${S.sprintBest || 0}</b><span>meilleur sprint</span></div><div><b>${S.bestCombo || 0}</b><span>meilleure série de bonnes réponses</span></div><div><b>${S.bossWins || 0}</b><span>${(S.bossWins || 0) > 1 ? 'boss battus' : 'boss battu'}</span></div><div><b>${fmt(S.bestScore || 0)}</b><span>meilleur score</span></div></div>
   </section>
   <section><h2>Succès <span class="note">${nGot}/${ACH.reduce((n, a) => n + a.steps.length, 0)}</span></h2>
     <p class="note" style="margin-top:0">Touche un badge pour le voir en grand.</p>
+    <div class="row" style="margin-bottom:12px"><button class="btn ghost grow" data-a="coll">Voir toute la collection</button></div>
     <div class="badges">${ACH.map(achCard).join('')}</div>
   </section>
   <section><h2>Badges secrets <span class="note">${nSec}/${SECRETS.length}</span></h2>
     <p class="note" style="margin-top:0">Ils se débloquent en faisant des choses inattendues. À toi de les trouver !</p>
     <div class="secrets">${secGrid}</div>
+  </section>${renderBview()}`;
+}
+// the whole collection: one row of 6 boxes per family, then every secret; missing ones are empty "?" boxes
+function renderColl() {
+  const vals = achValues(), sec = cfg.secrets || {};
+  const nGot = ACH.reduce((n, a) => n + tierOf(a, vals[a.id]), 0) + SECRETS.filter(x => sec[x[0]]).length;
+  const nAll = ACH.reduce((n, a) => n + a.steps.length, 0) + SECRETS.length;
+  const rows = ACH.map(a => { const t = tierOf(a, vals[a.id]); return `<div class="crow"><b>${esc(a.label)}</b><div class="cgrid">${a.steps.map((_, i) => `<button data-a="bview" data-k="${a.id}" data-t="${i + 1}" class="${i < t ? 'on' : ''}" aria-label="${esc(i < t ? a.names[i] : 'Badge à découvrir')}">${i < t ? `<img src="badge-${a.img}-${i + 1}.webp" alt="" loading="lazy">` : '?'}</button>`).join('')}</div></div>`; }).join('');
+  const secs = SECRETS.map(([id, name]) => sec[id] ? `<button class="on" data-a="bview" data-k="secret" data-t="${id}" aria-label="${esc(name)}"><img src="badge-secret-${id}.webp" alt="" loading="lazy"></button>` : `<button data-a="bview" data-k="secret" data-t="${id}" aria-label="Badge secret">?</button>`).join('');
+  return `<section><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Collection <span class="note">${nGot}/${nAll}</span></h2><button class="btn ghost" data-a="collback">Retour</button></div>
+    <div class="bar2" style="margin:12px 0"><i style="width:${Math.round(nGot / nAll * 100)}%"></i></div>
+    ${rows}
+    <div class="crow"><b>Badges secrets</b><div class="cgrid">${secs}</div></div>
   </section>${renderBview()}`;
 }
 // big view of one badge (family tier, secret, or the last one won)
@@ -1310,10 +1349,10 @@ function renderBview() {
   } else {
     const a = ACH.find(x => x.id === k); if (!a) return '';
     const v = achValues()[a.id], cur = tierOf(a, v); t = Number(t);
-    locked = t > cur; img = a.img + '-' + t; name = locked ? 'Niveau ' + t + ' · ' + a.names[t - 1] : a.names[t - 1]; sub = a.label;
+    locked = t > cur; img = a.img + '-' + t; name = locked ? 'Niveau ' + t + ' · ???' : a.names[t - 1]; sub = a.label;
     info = `<p>${fmt(a.steps[t - 1])} ${esc(a.unit)}</p>${a.hint ? `<p>${esc(a.hint)}</p>` : ''}<p>${locked ? `Encore ${fmt(a.steps[t - 1] - v)} pour l'obtenir.` : (when((cfg.tierDates || {})[a.id + '-' + t]) || 'Obtenu')}</p>`;
   }
-  return `<div class="bview" data-a="bclose"><div>${q ? '<div class="q">?</div>' : `<img class="${locked ? 'locked' : ''}" src="badge-${img}.webp" alt="">`}<b class="big2">${esc(name)}</b>${sub ? `<p>${esc(sub)}</p>` : ''}${info}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
+  return `<div class="bview" data-a="bclose"><div>${q || locked ? '<div class="q">?</div>' : `<img src="badge-${img}.webp" alt="">`}<b class="big2">${esc(name)}</b>${sub ? `<p>${esc(sub)}</p>` : ''}${info}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
 }
 function renderHelp() {
   const arrowR = c => `<svg width="120" height="22" viewBox="0 0 120 22" aria-hidden="true"><path d="M4 11h104" stroke="${c}" stroke-width="3" stroke-linecap="round"/><path d="M104 4l10 7-10 7" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -1345,7 +1384,14 @@ function renderSet() {
     <div class="row"><label style="margin:0;display:flex;gap:10px;align-items:center"><input type="color" id="c-main" value="${p.main}"> Couleur principale</label>
     <label style="margin:0;display:flex;gap:10px;align-items:center"><input type="color" id="c-acc" value="${p.accent}"> Couleur du score</label></div>
     <h3 style="margin-top:20px">Affichage</h3>
-    <div class="fl" style="margin-top:8px">${[['auto', 'Auto'], ['light', 'Clair'], ['dark', 'Sombre']].map(([v, l]) => `<button class="chip" data-a="mode" data-k="${v}" aria-pressed="${t.mode === v}">${l}</button>`).join('')}</div>
+    <div class="fl" style="margin-top:8px">${[['auto', 'Auto'], ['light', 'Clair'], ['dark', 'Sombre']].map(([v, l]) => `<button class="chip" data-a="scheme" data-k="${v}" aria-pressed="${t.mode === v}">${l}</button>`).join('')}</div>
+    <h3 style="margin-top:20px">Écoute des mots</h3>
+    ${canSpeak() ? `<p class="note" style="margin-top:0">Le bouton haut-parleur lit le mot avec la voix du téléphone. La qualité dépend des voix installées (surtout pour le coréen).</p><div class="fl"><button class="chip" data-a="ttsauto" aria-pressed="${!!cfg.ttsAuto}">Lecture automatique</button>${cfg.langs.map(l => `<button class="chip" data-a="say" data-t="${esc(l.code === 'ko' ? '안녕하세요' : l.code === 'en' ? 'Hello, how are you?' : l.name)}" data-l="${l.id}">Tester : ${esc(l.name)}</button>`).join('')}</div>` : '<p class="note" style="margin-top:0">Ce navigateur ne sait pas lire les mots à voix haute.</p>'}
+    <h3 style="margin-top:20px">Présentation</h3>
+    <div class="row"><button class="btn ghost" data-a="welcome">Revoir l'écran d'accueil</button></div>
+    <h3 style="margin-top:20px">Couleurs du calendrier</h3>
+    <p class="note" style="margin-top:0">Une couleur par objectif du défi : 10, 20, 30 et 50.</p>
+    <div class="caltheme">${Object.entries(CAL_THEMES).map(([k, [n, c]]) => `<button data-a="caltheme" data-k="${k}" aria-pressed="${(cfg.calTheme || 'feu') === k}"><span>${c.map(x => `<i style="background:${x}"></i>`).join('')}</span>${n}</button>`).join('')}</div>
   </section>
   <section id="langs"><h2>Langues</h2>
     <ul class="langs">${cfg.langs.map(l => { const n = [...words.values()].filter(w => wLang(w) === l.id).length; return `<li><span><b>${esc(l.name)}</b> <span class="note">${plural(n, 'mot', 'mots')} · ${plural(libsOf(l.id).length, 'thème', 'thèmes')}</span></span>
@@ -1374,7 +1420,7 @@ function render(fromSnap) {
   const banner = !ui.newVersion ? '' : ui.updFailed
     ? `<div class="upd"><span>La version ${esc(ui.newVersion)} ne s'installe pas : sur GitHub, <b>app.js</b> ou <b>style.css</b> n'ont pas été remplacés (version installée : ${APP_VERSION}). Renvoie tous les fichiers, attends la coche verte, puis réessaie.</span><button class="btn small" data-a="update">Réessayer</button></div>`
     : `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>`;
-  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : renderSet());
+  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : view === 'coll' ? renderColl() : renderSet()) + renderWelcome();
   if (view === 'rev') {
     const a = $('#ans');
     const card = document.querySelector('.card');
@@ -1385,6 +1431,77 @@ function render(fromSnap) {
   } else if (keep === 'q' && $('#q')) { const q = $('#q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
 }
 
+/* ---------- listening (speech synthesis of the phone, works offline) ---------- */
+const SPEAK = { fr: 'fr-FR', en: 'en-GB', ko: 'ko-KR', es: 'es-ES', de: 'de-DE', it: 'it-IT', ja: 'ja-JP', zh: 'zh-CN', pt: 'pt-PT', ru: 'ru-RU', ar: 'ar-SA', nl: 'nl-NL' };
+const canSpeak = () => 'speechSynthesis' in window;
+function say(text, langId) {
+  if (!canSpeak() || !text) return;
+  const code = langCode(langId), tag = SPEAK[code] || code;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(String(text).replace(/\([^)]*\)/g, '').split(/[\/;]/)[0].trim());
+  u.lang = tag; u.rate = .9;
+  const v = speechSynthesis.getVoices().find(x => x.lang && x.lang.toLowerCase().startsWith(code.toLowerCase()));
+  if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+const sayBtn = (text, langId, label) => langId === 'fr' || !canSpeak() ? '' : `<button type="button" class="say" data-a="say" data-t="${esc(text)}" data-l="${esc(langId)}" aria-label="${esc(label || 'Écouter')}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>${label ? `<span>${esc(label)}</span>` : ''}</button>`;
+// automatic reading: the foreign word when it appears, the foreign answer once revealed
+function autoSay(key, text, langId) {
+  if (!cfg.ttsAuto || langId === 'fr' || ui.saidKey === key) return;
+  ui.saidKey = key; setTimeout(() => say(text, langId), 60);
+}
+
+/* ---------- welcome screen for a new user ---------- */
+const WELCOME = [
+  ['Bienvenue !', 'Mon vocabulaire t\'aide à retenir les mots de tes cours. Commence par ajouter tes mots dans l\'onglet <b>Ajouter</b> : un par un, en collant une liste, ou en demandant une liste toute prête à une IA (l\'appli te prépare la demande).'],
+  ['Réviser au bon moment', 'Traduis chaque mot en écrivant ta réponse. Juste : le mot monte d\'une case et revient plus tard (1 jour, 3 jours, 1 semaine… jusqu\'à 3 mois). Raté : il revient vite. Plus un mot monte, plus il rapporte de points.'],
+  ['Jouer', 'En plus de la révision : le <b>Sprint</b> (un maximum de bonnes réponses en 60 secondes), la <b>chasse aux monstres</b> (bats les créatures du folklore pour remplir ton bestiaire) et le <b>Duel</b> à deux sur le même téléphone.'],
+  ['Progresser', 'Chaque jour, un défi : 10, 20, 30 ou 50 bonnes réponses. Enchaîne les jours, gagne des titres, des badges… et trouve les badges secrets. Touche la ligne du défi en haut pour voir ta progression.']
+];
+function renderWelcome() {
+  if (ui.welcome == null) return '';
+  const i = ui.welcome, [t, p] = WELCOME[i], last = i === WELCOME.length - 1;
+  return `<div class="bview welcome"><div><span class="note">${i + 1} / ${WELCOME.length}</span><b class="big2">${t}</b><p class="ltxt">${p}</p><div class="dots">${WELCOME.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div><div class="row center" style="margin-top:10px">${last ? '' : '<button class="btn ghost" data-a="wskip">Passer</button>'}<button class="btn" data-a="${last ? 'wskip' : 'wnext'}">${last ? 'C\'est parti !' : 'Suivant'}</button></div></div></div>`;
+}
+function firstRun() {
+  if (cfg.welcomed !== undefined) return;
+  cfg.welcomed = words.size > 0;
+  if (!cfg.welcomed) ui.welcome = 0;
+  saveCfg();
+}
+
+/* ---------- list generator: a ready-made request to paste into an AI ---------- */
+function aiPrompt() {
+  const L = getLang(ui.addLang), g = ui.gen || {}, n = g.n || 30, lvl = g.lvl || 'débutant', theme = (g.theme || '').trim() || 'la vie quotidienne';
+  const name = lower(L.name), extra = [];
+  if (L.code === 'en') extra.push('- Les verbes avec « to » devant (ex. « to drive = conduire »).');
+  if (L.code === 'ko') extra.push('- Les mots coréens en hangeul uniquement, sans romanisation.');
+  return `Donne-moi une liste de ${n} mots de vocabulaire en ${name} sur le thème « ${theme} », niveau ${lvl}, pour un francophone.
+
+Réponds uniquement avec la liste, sans introduction, sans numéros et sans mise en forme. Une ligne par mot, exactement sous cette forme :
+mot en ${name} = traduction en français
+
+Règles :
+- Commence par une ligne « # ${theme.charAt(0).toUpperCase() + theme.slice(1)} ».
+- S'il y a plusieurs traductions françaises, sépare-les par « / ».
+${extra.length ? extra.join('\n') + '\n' : ''}- Si un mot est ambigu, ajoute un indice entre parenthèses, ex. « bat = chauve-souris (animal) ».
+- Les nombres en chiffres du côté français.
+- Seulement des mots ou des expressions courtes, pas de phrases.`;
+}
+function renderGen() {
+  const g = ui.gen || (ui.gen = {}), L = getLang(ui.addLang);
+  return `<section><h2>Créer une liste avec une IA</h2>
+    <p class="note" style="margin-top:0">Pas de liste sous la main ? L'appli prépare une demande toute faite pour Claude, ChatGPT ou Gemini.</p>
+    <ol class="steps"><li>Choisis un thème, un nombre de mots et un niveau.</li><li>Appuie sur <b>Copier la demande</b>.</li><li>Colle-la dans l'IA de ton choix et envoie.</li><li>Copie sa réponse et colle-la ci-dessous dans <b>Importer une liste</b>.</li></ol>
+    <label for="g-theme">Thème (en ${esc(lower(L.name))})</label><input id="g-theme" placeholder="ex. la cuisine, le chantier, les voyages" value="${esc(g.theme || '')}">
+    <div class="two"><div><label for="g-n">Nombre de mots</label><select id="g-n">${[10, 20, 30, 50].map(v => `<option${(g.n || 30) === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+    <div><label for="g-lvl">Niveau</label><select id="g-lvl">${['débutant', 'intermédiaire', 'avancé'].map(v => `<option${(g.lvl || 'débutant') === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
+    <div class="row"><button class="btn" type="button" data-a="gencopy">Copier la demande</button><button class="btn ghost" type="button" data-a="genshow">${g.show ? 'Masquer' : 'Voir'} la demande</button></div>
+    ${g.show ? `<textarea rows="10" readonly id="g-out">${esc(aiPrompt())}</textarea>` : ''}
+  </section>`;
+}
+
+function readGen() { const g = ui.gen || (ui.gen = {}); if ($('#g-theme')) { g.theme = $('#g-theme').value; g.n = Number($('#g-n').value); g.lvl = $('#g-lvl').value; } }
 /* ---------- toast ---------- */
 let toastTimer, toastUndo;
 function toast(t, undo) {
@@ -1400,6 +1517,8 @@ const go = v => { view = v; ui.bview = null; ui.beastView = null; if (v !== 'rev
 document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.v); });
 $('#gear').addEventListener('click', () => go(view === 'set' ? 'rev' : 'set'));
 $('#score').addEventListener('click', () => go(view === 'help' ? 'rev' : 'help'));
+$('#bestBtn').addEventListener('click', () => go(view === 'best' ? 'rev' : 'best'));
+$('#lastBtn').addEventListener('click', () => { go('prog'); ui.bview = { k: 'last' }; render(); });
 $('#sStreak').addEventListener('click', () => go(view === 'prog' ? 'rev' : 'prog'));
 
 $('#main').addEventListener('submit', e => {
@@ -1472,8 +1591,11 @@ $('#main').addEventListener('click', e => {
   if (a === 'sprintgo') sprintStart();
   if (a === 'bossgo') bossStart();
   if (a === 'bossfight') bossFight();
+  if (a === 'coll') go('coll');
+  if (a === 'collback') go('prog');
   if (a === 'bestiary') go('best');
   if (a === 'bestback') { go('rev'); }
+  if (a === 'bestsort') { ui.bestSort = b.dataset.k; render(); }
   if (a === 'beast') { ui.beastView = b.dataset.k; render(); }
   if (a === 'duelgo') duelStart();
   if (a === 'duelplay') duelPlay();
@@ -1539,7 +1661,15 @@ $('#main').addEventListener('click', e => {
     if (k !== 'custom' && PRESETS[k]) { cfg.theme.main = PRESETS[k].main; cfg.theme.accent = PRESETS[k].accent; }
     cfg.theme.preset = k; applyTheme(); saveCfg(); render();
   }
-  if (a === 'mode') { cfg.theme.mode = b.dataset.k; applyTheme(); saveCfg(); render(); }
+  if (a === 'say') { say(b.dataset.t, b.dataset.l); return; }
+  if (a === 'ttsauto') { cfg.ttsAuto = !cfg.ttsAuto; saveCfg(); render(); }
+  if (a === 'welcome') { ui.welcome = 0; render(); }
+  if (a === 'wnext') { ui.welcome++; render(); }
+  if (a === 'wskip') { ui.welcome = null; cfg.welcomed = true; saveCfg(); render(); }
+  if (a === 'genshow') { readGen(); ui.gen.show = !ui.gen.show; render(); }
+  if (a === 'gencopy') { readGen(); const t = aiPrompt(); (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast('Demande copiée : colle-la dans ton IA.'), () => { ui.gen.show = true; render(); toast('Copie impossible : sélectionne le texte et copie-le.'); }); }
+  if (a === 'caltheme') { cfg.calTheme = b.dataset.k; saveCfg(); render(); }
+  if (a === 'scheme') { cfg.theme.mode = b.dataset.k; applyTheme(); saveCfg(); render(); }
   if (a === 'backup') downloadBackup();
   if (a === 'update') hardUpdate();
   if (a === 'checkupd') checkUpdate(true);
