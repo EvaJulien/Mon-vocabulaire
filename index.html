@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.0.0">
+<link rel="stylesheet" href="style.css?v=2.2.0">
 </head>
 <body>
 <header>
@@ -40,7 +40,7 @@
 <main class="wrap" id="main"></main>
 <div id="toast" role="status"><span id="toastT"></span><button id="toastB" type="button">Annuler</button></div>
 
-<script src="app.js?v=2.0.0"></script>
+<script src="app.js?v=2.2.0"></script>
 <script>
 if('serviceWorker' in navigator && location.protocol!=='file:'){
   window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(function(r){ r.update(); }).catch(function(){}); });

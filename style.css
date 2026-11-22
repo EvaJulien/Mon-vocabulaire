@@ -98,15 +98,22 @@ a.btn{display:inline-flex;align-items:center;text-decoration:none}
 .cal{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,minmax(0,1fr));grid-template-columns:repeat(18,minmax(0,1fr));gap:3px;max-width:520px}
 .c{display:block;aspect-ratio:1;border-radius:3px;background:var(--line)}
 .c.future{background:transparent}
-.c.l1{background:color-mix(in srgb,var(--btn) 30%,var(--line))}.c.l2{background:color-mix(in srgb,var(--btn) 60%,var(--line))}.c.l3{background:var(--btn)}
-.legend{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--mut);margin-top:8px}.legend .c{width:14px}
+.c.l1{background:color-mix(in srgb,var(--gc,var(--btn)) 30%,var(--line))}.c.l2{background:color-mix(in srgb,var(--gc,var(--btn)) 62%,var(--line))}.c.l3{background:var(--gc,var(--btn))}
+.gchip[aria-pressed=true]{background:var(--gc);border-color:var(--gc)}
+.pips{display:flex;gap:4px;margin:2px 0}.pips i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.bar3{width:100%;height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:4px}.bar3 i{display:block;height:100%;background:var(--btn)}
+.legend{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:13px;color:var(--mut);margin-top:8px}.legend .c{width:14px}
 .recs{display:grid;grid-template-columns:repeat(auto-fit,minmax(9em,1fr));gap:10px}
 .recs div{background:var(--soft);border-radius:14px;padding:12px;display:flex;flex-direction:column}
 .recs b{font-size:28px;font-weight:800;color:var(--btn)}.recs span{font-size:13px;color:var(--mut)}
 .badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .badge{display:flex;flex-direction:column;align-items:center;text-align:center;border:2px solid var(--line);border-radius:14px;padding:12px 8px;gap:4px}
 .badge b{font-size:14px}.badge span{font-size:12px;color:var(--mut)}
-.badge:not(.on){opacity:.6}.badge.on{border-color:var(--btn)}
+.badge:not(.on)>svg,.badge:not(.on)>b{opacity:.6}
+.bimg{width:84px;height:84px;object-fit:contain;display:block}
+.bimg.locked{filter:grayscale(1) brightness(.9);opacity:.35}
+.badge.legend{border-color:#d4af37;box-shadow:0 0 0 2px #d4af37 inset}
+.pips i:nth-child(6){border-radius:2px}.badge.on{border-color:var(--btn)}
 .card.ok{animation:bump .35s}
 @keyframes bump{50%{transform:scale(1.015)}}
 .confetti{position:fixed;inset:0;pointer-events:none;z-index:40;overflow:hidden}

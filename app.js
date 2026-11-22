@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.2.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -270,7 +270,7 @@ async function boot() {
   else {
     backend = localBackend();
     setStatus(framed ? 'Mode hors ligne : les mots restent sur cet appareil.' : '');
-    applyTheme(); startSessionIfNeeded(); render();
+    applyTheme(); startSessionIfNeeded(); checkBadges(); render();
     checkUpdate(false);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
   }
@@ -370,51 +370,63 @@ const titleOf = sc => { let t = TITLES[0]; for (const x of TITLES) if (sc >= x[0
 const nextTitle = sc => TITLES.find(x => x[0] > sc);
 const goalOf = () => cfg.stats.goal || 20;
 const todayCount = () => (cfg.stats.days || {})[ymd(Date.now())] || 0;
+// goal of a given day (remembered for each day, so changing the goal does not rewrite the past)
+const dayGoal = k => k === ymd(Date.now()) ? goalOf() : ((cfg.stats.goals || {})[k] || goalOf());
 function streakNow() {
-  const g = goalOf(), d = cfg.stats.days || {};
+  const d = cfg.stats.days || {};
   let t = Date.now();
-  if ((d[ymd(t)] || 0) < g) t -= DAY;
+  if ((d[ymd(t)] || 0) < dayGoal(ymd(t))) t -= DAY;
   let n = 0;
-  while ((d[ymd(t)] || 0) >= g) { n++; t -= DAY; }
+  while ((d[ymd(t)] || 0) >= dayGoal(ymd(t))) { n++; t -= DAY; }
   return n;
 }
 function addDay() {
   const st = cfg.stats, k = ymd(Date.now());
   st.days = { ...(st.days || {}) };
   st.days[k] = (st.days[k] || 0) + 1;
+  st.goals = { ...(st.goals || {}), [k]: goalOf() };
   if (st.days[k] === goalOf()) ui.goalDone = true;
   const keys = Object.keys(st.days);
-  if (keys.length > 420) { const lim = Date.now() - 400 * DAY; keys.forEach(x => { const [y, m, dd] = x.split('-').map(Number); if (new Date(y, m - 1, dd).getTime() < lim) delete st.days[x]; }); }
+  if (keys.length > 420) { const lim = Date.now() - 400 * DAY; keys.forEach(x => { const [y, m, dd] = x.split('-').map(Number); if (new Date(y, m - 1, dd).getTime() < lim) { delete st.days[x]; delete st.goals[x]; } }); }
   const sk = streakNow(); if (sk > (st.best || 0)) st.best = sk;
 }
 const ring = (p, size, sw, col) => { const r = (size - sw) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(1, p)); return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="${sw}"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${col || 'var(--accent)'}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c * v} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`; };
 
 /* ---------- badges ---------- */
-const BADGES = [
-  ['goal1', 'Défi relevé', 'Réussir un défi du jour', c => c.goalDays >= 1],
-  ['streak3', '3 jours', '3 jours d\'affilée', c => c.streak >= 3],
-  ['streak7', 'Une semaine', '7 jours d\'affilée', c => c.streak >= 7],
-  ['streak30', 'Un mois', '30 jours d\'affilée', c => c.streak >= 30],
-  ['combo10', 'Série de 10', '10 bonnes réponses d\'affilée', c => c.combo >= 10],
-  ['combo20', 'Série parfaite', '20 bonnes réponses d\'affilée', c => c.combo >= 20],
-  ['words100', 'Bibliothécaire', '100 mots dans ta bibliothèque', c => c.words >= 100],
-  ['words250', 'Grand lecteur', '250 mots dans ta bibliothèque', c => c.words >= 250],
-  ['poly', 'Polyglotte', 'Des mots dans 2 langues', c => c.langs >= 2],
-  ['master1', 'Premier maîtrisé', 'Un mot dans la case 3 mois', c => c.mastered >= 1],
-  ['master50', 'Mémoire d\'éléphant', '50 mots maîtrisés', c => c.mastered >= 50],
-  ['sprint15', 'Rapide', '15 bonnes réponses en sprint', c => c.sprint >= 15],
-  ['sprint25', 'Éclair', '25 bonnes réponses en sprint', c => c.sprint >= 25],
-  ['boss1', 'Tueur de boss', 'Battre un boss', c => c.boss >= 1],
-  ['duel1', 'Premier duel', 'Jouer un duel', c => c.duels >= 1]
+// each category has 5 tiers with their own names, growing in strength
+const ACH = [
+  { id: 'goal', label: 'Défis du jour réussis', unit: 'défis réussis', steps: [1, 10, 50, 100, 365, 730], names: ['Premier défi', 'Assidu', 'Acharné', 'Infatigable', 'Légende du quotidien', 'Éternel'], img: 'defis' },
+  { id: 'streak', label: 'Jours d\'affilée', unit: 'jours d\'affilée', steps: [3, 7, 30, 100, 365], names: ['Petite flamme', 'Feu de camp', 'Brasier', 'Volcan', 'Soleil'] },
+  { id: 'combo', label: 'Bonnes réponses d\'affilée', unit: 'bonnes réponses d\'affilée', steps: [10, 25, 50, 100, 200], names: ['En rythme', 'Sur sa lancée', 'Inarrêtable', 'Machine', 'Perfection'] },
+  { id: 'words', label: 'Mots dans ta bibliothèque', unit: 'mots', steps: [250, 500, 1000, 2500, 5000], names: ['Carnet', 'Cahier', 'Dictionnaire', 'Encyclopédie', 'Grande bibliothèque'] },
+  { id: 'mastered', label: 'Mots maîtrisés', unit: 'mots maîtrisés', steps: [1, 50, 200, 500, 1000], names: ['Première graine', 'Jeune pousse', 'Arbuste', 'Grand arbre', 'Forêt'] },
+  { id: 'sprint', label: 'Sprint 60 s', unit: 'bonnes réponses en 60 s', steps: [10, 15, 20, 25, 30], names: ['Rapide', 'Fusée', 'Éclair', 'Supersonique', 'Vitesse lumière'] },
+  { id: 'boss', label: 'Boss battus', unit: 'boss battus', steps: [1, 5, 20, 50, 100], names: ['Chasseur', 'Guerrier', 'Champion', 'Héros', 'Légende'] },
+  { id: 'duels', label: 'Duels joués', unit: 'duels joués', steps: [1, 5, 20, 50, 100], names: ['Challenger', 'Rival', 'Duelliste', 'Gladiateur', 'Maître d\'armes'] },
+  { id: 'langs', label: 'Polyglotte', unit: 'langues avec au moins 50 mots', steps: [2, 3, 4, 5, 6], names: ['Bilingue', 'Trilingue', 'Polyglotte', 'Grand voyageur', 'Citoyen du monde'] }
 ];
-function badgeCtx() {
-  const all = [...words.values()], g = goalOf(), st = cfg.stats;
-  return { goalDays: Object.values(st.days || {}).filter(n => n >= g).length, streak: Math.max(streakNow(), st.best || 0), combo: st.bestCombo || 0, words: all.length, langs: new Set(all.map(wLang)).size, mastered: all.filter(w => w.lvl === TOP).length, sprint: st.sprintBest || 0, boss: st.bossWins || 0, duels: st.duels || 0 };
+const GOAL_COL = { 10: '#3b82f6', 20: '#16a34a', 30: '#f59e0b', 50: '#e11d48' };
+const TIER_COL = ['#c4874f', '#9aa7b8', '#e8b923', '#5cc6cf', '#a77bf0', '#1b1b22'];
+function achValues() {
+  const all = [...words.values()], st = cfg.stats, days = st.days || {};
+  return {
+    goal: Object.keys(days).filter(k => days[k] >= dayGoal(k)).length,
+    streak: Math.max(streakNow(), st.best || 0),
+    combo: st.bestCombo || 0,
+    words: all.length,
+    mastered: all.filter(w => w.lvl === TOP).length,
+    sprint: st.sprintBest || 0,
+    boss: st.bossWins || 0,
+    duels: st.duels || 0,
+    langs: cfg.langs.filter(l => all.filter(w => wLang(w) === l.id).length >= 50).length
+  };
 }
+const tierOf = (a, v) => a.steps.filter(x => v >= x).length;
+// returns the newly reached tiers; the first time it runs it records the current state silently
 function checkBadges() {
-  const c = badgeCtx(), got = cfg.badges || {};
-  const nw = BADGES.filter(b => !got[b[0]] && b[3](c));
-  if (nw.length) { cfg.badges = { ...got }; nw.forEach(b => cfg.badges[b[0]] = Date.now()); }
+  const v = achValues(), first = !cfg.tiers, prev = cfg.tiers || {}, now = {}, nw = [];
+  ACH.forEach(a => { now[a.id] = tierOf(a, v[a.id]); if (!first && now[a.id] > (prev[a.id] || 0)) nw.push([a, now[a.id]]); });
+  if (first || ACH.some(a => now[a.id] !== (prev[a.id] || 0))) { cfg.tiers = now; saveCfg(); }
   return nw;
 }
 // after any answer: daily goal, new badges, mastered word → message + confetti
@@ -423,7 +435,7 @@ function celebrate() {
   let fx = false;
   if (ui.fxMastered) { ui.fxMastered = false; fx = true; }
   if (ui.goalDone) { ui.goalDone = false; msg.push('Défi du jour réussi !'); }
-  if (nb.length) msg.push((nb.length > 1 ? 'Succès débloqués : ' : 'Succès débloqué : ') + nb.map(b => b[1]).join(', '));
+  if (nb.length) msg.push((nb.length > 1 ? 'Nouveaux succès : ' : 'Nouveau succès : ') + nb.map(([a, t]) => `${a.names[t - 1]} (${a.steps[t - 1]} ${a.unit})`).join(', '));
   if (msg.length) { saveCfg(); toast(msg.join(' · ')); fx = true; }
   if (fx) confetti();
   if (msg.length) renderHeader();
@@ -974,28 +986,37 @@ function renderProg() {
   for (let i = 0; i < WEEKS * 7; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
     if (d > today) { cells += '<i class="c future"></i>'; continue; }
-    const n = days[ymd(d)] || 0, lv = !n ? 0 : n < g / 2 ? 1 : n < g ? 2 : 3;
-    cells += `<i class="c l${lv}" title="${d.toLocaleDateString('fr-FR')} : ${n} bonne${n > 1 ? 's' : ''} réponse${n > 1 ? 's' : ''}"></i>`;
+    const k = ymd(d), n = days[k] || 0, dg = dayGoal(k), lv = !n ? 0 : n < dg / 2 ? 1 : n < dg ? 2 : 3;
+    cells += `<i class="c l${lv}" style="--gc:${GOAL_COL[dg] || GOAL_COL[20]}" title="${d.toLocaleDateString('fr-FR')} : ${n} / ${dg}"></i>`;
   }
-  const got = cfg.badges || {};
-  const medal = on => `<svg width="34" height="40" viewBox="0 0 34 40" aria-hidden="true"><path d="M9 0h6l4 12h-6zM25 0h-6l-4 12h6z" fill="${on ? 'var(--btn)' : 'var(--line)'}"/><circle cx="17" cy="25" r="13" fill="${on ? 'var(--accent)' : 'var(--soft)'}" stroke="${on ? 'var(--btn)' : 'var(--line)'}" stroke-width="2.5"/><path d="m17 18 2.2 4.5 5 .7-3.6 3.5.8 5-4.4-2.3-4.4 2.3.8-5-3.6-3.5 5-.7z" fill="${on ? 'var(--btn)' : 'var(--line)'}"/></svg>`;
-  const nGot = BADGES.filter(b => got[b[0]]).length;
+ const vals = achValues();
+  const medal = t => `<svg width="34" height="40" viewBox="0 0 34 40" aria-hidden="true"><path d="M9 0h6l4 12h-6zM25 0h-6l-4 12h6z" fill="${t ? 'var(--btn)' : 'var(--line)'}"/><circle cx="17" cy="25" r="13" fill="${t ? TIER_COL[t - 1] : 'var(--soft)'}" stroke="${t ? 'var(--btn)' : 'var(--line)'}" stroke-width="2.5"/><path d="m17 18 2.2 4.5 5 .7-3.6 3.5.8 5-4.4-2.3-4.4 2.3.8-5-3.6-3.5 5-.7z" fill="${t ? '#fff' : 'var(--line)'}"/></svg>`;
+  const nGot = ACH.reduce((n, a) => n + tierOf(a, vals[a.id]), 0);
+  const achCard = a => {
+    const v = vals[a.id], t = tierOf(a, v), nx = a.steps[t];
+    const from = t ? a.steps[t - 1] : 0;
+    const pic = a.img ? `<img class="bimg${t ? '' : ' locked'}" src="badge-${a.img}-${Math.max(1, t)}.webp" alt="" loading="lazy">` : medal(t);
+    return `<div class="badge${t ? ' on' : ''}${t === a.steps.length && a.steps.length > 5 ? ' legend' : ''}">${pic}<b>${t ? esc(a.names[t - 1]) : esc(a.label)}</b><span>${t ? esc(a.label) : `${a.steps[0]} ${esc(a.unit)}`}</span>
+      <div class="pips">${a.steps.map((_, i) => `<i style="${i < t ? `background:${TIER_COL[i]}` : ''}"></i>`).join('')}</div>
+      ${nx ? `<div class="bar3"><i style="width:${Math.min(100, Math.round((v - from) / (nx - from) * 100))}%"></i></div><span>${fmt(Math.min(v, nx))} / ${fmt(nx)} pour <b>${esc(a.names[t])}</b></span>` : '<span><b>Niveau maximum !</b></span>'}</div>`;
+  };
   return `<section class="prog">
     <div class="ptitle"><div><span class="note">Ton titre</span><b class="tname">${esc(titleOf(sc))}</b><span class="note">${nt ? `encore ${fmt(nt[0] - sc)} points pour devenir <b>${esc(nt[1])}</b>` : 'Tu as atteint le titre le plus haut !'}</span></div>
       ${nt ? `<div class="bar2"><i style="width:${Math.round((sc - prevT[0]) / (nt[0] - prevT[0]) * 100)}%"></i></div>` : ''}</div>
     <div class="pgoal">${ring(tc / g, 96, 10, 'var(--btn)')}<div><b class="big2">${Math.min(tc, g)} / ${g}</b><p style="margin:2px 0 8px">${tc >= g ? 'Défi du jour réussi !' : `bonnes réponses aujourd'hui, encore ${g - tc} pour réussir le défi`}</p>
-      <div class="fl"><span>Objectif</span>${[10, 20, 30, 50].map(v => `<button class="chip" data-a="goal" data-val="${v}" aria-pressed="${g === v}">${v}</button>`).join('')}</div></div></div>
+      <div class="fl"><span>Objectif</span>${[10, 20, 30, 50].map(v => `<button class="chip gchip" data-a="goal" data-val="${v}" aria-pressed="${g === v}" style="--gc:${GOAL_COL[v]}">${v}</button>`).join('')}</div></div></div>
   </section>
   <section><h2>${st ? `${plural(st, 'jour', 'jours')} d'affilée` : 'Ta série'}</h2>
     <p class="note" style="margin-top:0">Un jour compte quand tu réussis ton défi du jour.${S.best ? ` Record : ${plural(S.best, 'jour', 'jours')}.` : ''}</p>
     <div class="cal">${cells}</div>
-    <div class="legend"><span>Moins</span><i class="c l0"></i><i class="c l1"></i><i class="c l2"></i><i class="c l3"></i><span>Défi réussi</span></div>
+    <div class="legend"><span>Moins</span><i class="c l0"></i><i class="c l1" style="--gc:${GOAL_COL[g]}"></i><i class="c l2" style="--gc:${GOAL_COL[g]}"></i><i class="c l3" style="--gc:${GOAL_COL[g]}"></i><span>Défi réussi</span></div>
+    <div class="legend"><span>Défi de</span>${[10, 20, 30, 50].map(v => `<i class="c l3" style="--gc:${GOAL_COL[v]}"></i><span>${v}</span>`).join('')}</div>
   </section>
   <section><h2>Records</h2>
     <div class="recs"><div><b>${S.sprintBest || 0}</b><span>meilleur sprint</span></div><div><b>${S.bestCombo || 0}</b><span>meilleure série de bonnes réponses</span></div><div><b>${S.bossWins || 0}</b><span>${(S.bossWins || 0) > 1 ? 'boss battus' : 'boss battu'}</span></div><div><b>${fmt(S.bestScore || 0)}</b><span>meilleur score</span></div></div>
   </section>
-  <section><h2>Succès <span class="note">${nGot}/${BADGES.length}</span></h2>
-    <div class="badges">${BADGES.map(b => `<div class="badge${got[b[0]] ? ' on' : ''}">${medal(!!got[b[0]])}<b>${esc(b[1])}</b><span>${esc(b[2])}</span></div>`).join('')}</div>
+  <section><h2>Succès <span class="note">${nGot}/${ACH.reduce((n, a) => n + a.steps.length, 0)}</span></h2>
+    <div class="badges">${ACH.map(achCard).join('')}</div>
   </section>`;
 }
 function renderHelp() {
@@ -1113,6 +1134,7 @@ $('#main').addEventListener('submit', e => {
     toast(`${plural(r.added, 'mot ajouté', 'mots ajoutés')}${r.merged ? `, ${r.merged} complété(s)` : ''}${bad.length ? `, ${bad.length} ligne(s) non comprise(s)` : ''}`);
     if (!session || session.state === 'done') restartSession();
     render();
+    celebrate();
   }
   if (f.id === 'ef') {
     const w = words.get(f.dataset.id);
@@ -1155,7 +1177,7 @@ $('#main').addEventListener('click', e => {
   if (a === 'duelgo') duelStart();
   if (a === 'duelplay') duelPlay();
   if (a === 'duelsetup') { ui.duel = { state: 'setup' }; render(); }
-  if (a === 'goal') { cfg.stats.goal = Number(b.dataset.val); saveCfg(); render(); celebrate(); }
+  if (a === 'goal') { cfg.stats.goal = Number(b.dataset.val); cfg.stats.goals = { ...(cfg.stats.goals || {}), [ymd(Date.now())]: cfg.stats.goal }; if (todayCount() >= cfg.stats.goal && (cfg.stats.days || {})[ymd(Date.now())]) ui.goalDone = false; saveCfg(); render(); celebrate(); }
   if (a === 'party') { ui.celebrate = false; render(); }
   if (a === 'golang') { go('set'); document.getElementById('langs')?.scrollIntoView(); }
   if (a === 'starter') { ui.importText = STARTER; render(); }
