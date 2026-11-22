@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '3.0.1';
+const APP_VERSION = '3.1.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -852,7 +852,7 @@ const BEASTS = [
   { id: 'harpie', name: 'Harpie', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['chrono'], mode: 'e',
     story: 'Les harpies sont des créatures ailées, mi-femmes mi-oiseaux, envoyées par les dieux pour punir. Rapides comme la tempête, elles fondent sur leurs proies en poussant des cris stridents et emportent tout avant qu\'on ait eu le temps de réagir. Le roi Phinée, condamné par Zeus, les voyait voler sa nourriture à chaque repas.',
     fact: 'Leur nom vient du grec harpazein, « arracher, saisir ». Le grand aigle harpie d\'Amérique du Sud leur doit son nom.',
-    tip: 'On la repère à ses cris : elle ne se chasse qu\'à l\'oreille, et il faut répondre vite.' },
+    tip: 'On la repère à ses cris : elle ne se chasse qu\'à l\'ouïe, et il faut répondre vite.' },
   { id: 'tengu', name: 'Tengu', from: 'Japon', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['chrono'], mode: 'both',
     story: 'Esprits des montagnes japonaises, les tengu ont un visage rouge, un très long nez et de grandes ailes noires. Fiers et orgueilleux, ce sont de redoutables maîtres du sabre. On raconte qu\'un tengu enseigna l\'escrime au jeune Minamoto no Yoshitsune, qui devint l\'un des plus grands guerriers du Japon.',
     fact: 'Les premiers tengu ressemblaient à des oiseaux de proie. Le long nez n\'est apparu qu\'au fil des siècles.',
@@ -896,7 +896,7 @@ const BEASTS = [
   { id: 'banshee', name: 'Banshee', from: 'Irlande', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['fragile'], mode: 'e',
     story: 'En Irlande, certaines vieilles familles ont leur banshee, la « femme des fées ». La nuit, elle erre près des maisons, cheveux défaits, vêtue de gris. Quand quelqu\'un de la famille va bientôt mourir, elle pousse un long cri déchirant, que tout le monde entend sauf celui qu\'il concerne.',
     fact: 'En gaélique, son nom s\'écrit bean sí, « femme du tertre des fées ».',
-    tip: 'On l\'entend avant de la voir : elle ne se chasse qu\'à l\'oreille, la nuit, et sans droit à l\'erreur.' },
+    tip: 'On l\'entend avant de la voir : elle ne se chasse qu\'à l\'ouïe, la nuit, et sans droit à l\'erreur.' },
   { id: 'strigoi', name: 'Strigoï', from: 'Roumanie', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['greedy'], mode: 'both',
     story: 'Dans les villages des Carpates, le strigoï est un mort qui ne trouve pas le repos. La nuit, il sort de sa tombe pour hanter ses anciens voisins et voler leur force vitale. Pour s\'en protéger, on accrochait de l\'ail aux fenêtres et on laissait des graines de pavot devant la porte : il était obligé de les compter jusqu\'à l\'aube.',
     fact: 'Ces légendes roumaines ont inspiré l\'écrivain Bram Stoker pour son roman Dracula.',
@@ -988,7 +988,7 @@ const BEASTS = [
   { id: 'anansi', name: 'Anansi', from: 'Afrique de l\'Ouest', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['trick'], mode: 'e',
     story: 'Anansi est l\'araignée rusée des contes ashantis du Ghana. Petite mais très maligne, elle réussit à obtenir du dieu du ciel Nyame toutes les histoires du monde, en capturant pour lui un python, un léopard et des frelons. Depuis, c\'est elle qui garde les contes, et elle les raconte à qui sait l\'écouter.',
     fact: 'Avec la traite des esclaves, les histoires d\'Anansi ont voyagé jusqu\'aux Caraïbes, où on les raconte encore.',
-    tip: 'La gardienne des histoires racontées : elle ne se chasse qu\'à l\'oreille, et elle aime tromper.' },
+    tip: 'La gardienne des histoires racontées : elle ne se chasse qu\'à l\'ouïe, et elle aime tromper.' },
   { id: 'grootslang', name: 'Grootslang', from: 'Afrique du Sud', reg: 'Afrique et Moyen-Orient', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
     story: 'Au commencement, les dieux créèrent le grootslang, mi-éléphant mi-serpent, si fort et si rusé qu\'ils regrettèrent leur erreur. Ils le séparèrent en deux pour créer les éléphants et les serpents. Mais l\'un d\'eux s\'échappa. Il vit toujours au fond d\'une grotte d\'Afrique du Sud remplie de diamants.',
     fact: 'Son nom signifie « grand serpent » en afrikaans.',
@@ -1004,7 +1004,7 @@ const BEASTS = [
   { id: 'roussalka', name: 'Roussalka', from: 'Pays slaves', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['fragile'], mode: 'e',
     story: 'Dans les rivières et les lacs slaves vivent les roussalki, des esprits d\'eau aux longs cheveux verts. Les nuits d\'été, elles chantent et dansent au clair de lune sur les rives. Leur chant est si beau que les voyageurs s\'approchent… et finissent entraînés sous l\'eau.',
     fact: 'Le compositeur Dvořák en a fait un opéra, Rusalka, dont le « Chant à la lune » est très célèbre.',
-    tip: 'Elle attire par sa voix : à l\'oreille, la nuit, avec une seule vie.' },
+    tip: 'Elle attire par sa voix : à l\'ouïe, la nuit, avec une seule vie.' },
   { id: 'fenrir', name: 'Fenrir', from: 'Scandinavie', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'chrono'], mode: 'both',
     story: 'Fenrir, fils du dieu Loki, grandissait si vite que les dieux eux-mêmes en eurent peur. Ils l\'enchaînèrent avec Gleipnir, un lien magique fait du bruit des pas d\'un chat, de la barbe d\'une femme et du souffle d\'un poisson. Le dieu Týr y perdit sa main. À la fin du monde, le Ragnarök, Fenrir brisera ses chaînes.',
     fact: 'Le mardi s\'appelle « Tuesday » en anglais : le jour de Týr, le dieu manchot.',
@@ -1092,11 +1092,11 @@ const BEASTS = [
   { id: 'thunderbird', name: 'Thunderbird', from: 'Amérique du Nord', reg: 'Amériques', rar: 'Saisonnier', cond: 'summer', rules: ['chrono'], mode: 'e',
     story: 'Pour de nombreux peuples autochtones d\'Amérique du Nord, l\'oiseau-tonnerre est un être immense et sacré. Le battement de ses ailes fait gronder le tonnerre, et l\'éclair jaillit de ses yeux. Il combat les serpents des profondeurs et apporte la pluie qui nourrit la terre.',
     fact: 'Il est souvent sculpté au sommet des mâts totémiques de la côte nord-ouest du Pacifique.',
-    tip: 'On l\'entend avant de le voir : à l\'oreille, en été, et vite.' },
+    tip: 'On l\'entend avant de le voir : à l\'ouïe, en été, et vite.' },
   { id: 'raiju', name: 'Raijū', from: 'Japon', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'e',
     story: 'Le raijū, la « bête du tonnerre », accompagne Raijin, le dieu de la foudre. Pendant les orages, il bondit d\'arbre en arbre sous forme d\'éclair et laisse des traces de griffes sur les troncs. Par beau temps, il dort en boule… de préférence dans le nombril des gens.',
     fact: 'C\'est pour ça qu\'au Japon, on conseille aux enfants de cacher leur nombril pendant les orages.',
-    tip: 'Le tonnerre s\'écoute : à l\'oreille uniquement, et à la vitesse de l\'éclair.' },
+    tip: 'Le tonnerre s\'écoute : à l\'ouïe uniquement, et à la vitesse de l\'éclair.' },
   { id: 'mapinguari', name: 'Mapinguari', from: 'Amazonie', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
     story: 'Au cœur de l\'Amazonie rôde le mapinguari, une bête énorme couverte de poils roux, à l\'œil unique et aux griffes immenses. Sa peau est si dure qu\'aucune flèche ne la traverse. On le repère à son odeur épouvantable et à ses cris, qui ressemblent à ceux d\'un chasseur perdu.',
     fact: 'Certains scientifiques pensent que la légende garde le souvenir des paresseux géants, éteints il y a environ 10 000 ans.',
@@ -1104,7 +1104,7 @@ const BEASTS = [
   { id: 'impundulu', name: 'Impundulu', from: 'Afrique australe', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'e',
     story: 'Chez les Zoulous et les Xhosas, l\'impundulu est l\'oiseau-éclair. Noir et blanc, grand comme un homme, il plonge du ciel pendant les orages et fait jaillir la foudre de ses ailes. On disait que là où la foudre tombait, l\'oiseau avait pondu un œuf, qu\'il fallait trouver et détruire.',
     fact: 'Les guérisseurs traditionnels étaient appelés pour déterrer « l\'œuf de foudre » après un orage.',
-    tip: 'On l\'entend gronder : à l\'oreille, et vite.' },
+    tip: 'On l\'entend gronder : à l\'ouïe, et vite.' },
   { id: 'tikbalang', name: 'Tikbalang', from: 'Philippines', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['trick'], mode: 'both',
     story: 'Le tikbalang a une tête et des sabots de cheval sur un corps d\'homme immense, aux genoux plus hauts que sa tête quand il s\'accroupit. Il égare les voyageurs dans les montagnes en les faisant tourner en rond. Pour s\'en défaire, il faut retourner sa chemise et demander poliment le passage.',
     fact: 'Aux Philippines, quand il pleut sous le soleil, on dit qu\'un tikbalang se marie.',
@@ -1143,8 +1143,8 @@ const BEASTS = [
     tip: 'Une charge de colosse : tiens bon jusqu\'au bout.' },
   { id: 'stymphale', name: 'Oiseaux du Stymphale', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['hydra'], mode: 'e',
     story: 'Autour du lac Stymphale vivaient des oiseaux aux plumes de bronze, qu\'ils lançaient comme des flèches. Ils étaient si nombreux qu\'ils cachaient le soleil. Pour son sixième travail, Hercule les fit s\'envoler avec des crotales de bronze, des castagnettes forgées par Héphaïstos, puis les abattit un à un.',
-    fact: 'C\'est par le bruit qu\'Hercule les a vaincus : une victoire à l\'oreille.',
-    tip: 'On les chasse au son, à l\'oreille. Une nuée : chaque erreur en ajoute un.' },
+    fact: 'C\'est par le bruit qu\'Hercule les a vaincus : une victoire à l\'ouïe.',
+    tip: 'On les chasse au son, à l\'ouïe. Une nuée : chaque erreur en ajoute un.' },
   { id: 'taureau', name: 'Taureau de Crète', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
     story: 'Poséidon avait offert au roi Minos un magnifique taureau blanc sorti de la mer, pour qu\'il le lui sacrifie. Mais Minos le garda pour lui. Furieux, le dieu rendit l\'animal fou de rage. Pour son septième travail, Hercule le dompta à mains nues et le ramena en Grèce sur son dos, à travers la mer.',
     fact: 'Ce taureau serait le père du Minotaure.',
@@ -1321,14 +1321,14 @@ function bossAnswer(val, timeout) {
   celebrate();
 }
 const beastImg = (be, cls) => `<img class="${cls || 'beast'}" src="boss-${be.id}.webp" alt="${esc(be.name)}">`;
-const modeIcon = be => be.mode === 'w' ? ' · vue' : be.mode === 'e' ? ' · oreille' : '';
+const modeIcon = be => be.mode === 'w' ? ' · vue' : be.mode === 'e' ? ' · ouïe' : '';
 const rarChip = be => `<span class="rar" style="--rc:${RAR_COL[be.rar]}">${esc(be.rar)}</span>`;
 const hearts = (n, max) => Array.from({ length: max }, (_, i) => `<svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21 2.5 11.5A5.5 5.5 0 0 1 12 4a5.5 5.5 0 0 1 9.5 7.5z" fill="${i < n ? 'var(--red)' : 'none'}" stroke="var(--red)" stroke-width="2"/></svg>`).join('');
 // monsters tab: choose to hunt at the plume or at the oreille
 function renderHunt() {
   if (!words.size) return `<div class="empty"><h2>Pas encore de mots</h2><p>Ajoute des mots pour partir en chasse.</p><button class="btn" data-a="goadd">Ajouter des mots</button></div>`;
   const t = ui.huntTrack || 'w';
-  const bar = `<div class="modes">${[['w', 'Chasse à vue'], ['e', 'Chasse à l\'oreille']].map(([k, l]) => `<button class="mode" data-a="hunttrack" data-k="${k}" aria-pressed="${t === k}">${l}</button>`).join('')}</div>`;
+  const bar = `<div class="modes">${[['w', 'Chasse à vue'], ['e', 'Chasse à l\'ouïe']].map(([k, l]) => `<button class="mode" data-a="hunttrack" data-k="${k}" aria-pressed="${t === k}">${l}</button>`).join('')}</div>`;
   return bar + renderFilters() + renderBoss();
 }
 function renderBoss() {
@@ -1382,7 +1382,7 @@ function renderBest() {
   const sorts = [['num', 'Numéro'], ['origin', 'Origine'], ['rar', 'Rareté'], ['rule', 'Type de combat']].map(([k, n]) => `<button class="chip" data-a="bestsort" data-k="${k}" aria-pressed="${sort === k}">${n}</button>`).join('');
   return `<section><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Bestiaire</h2><button class="btn ghost" data-a="bestback">Retour</button></div>
     <div class="bcount"><div><b>${got}/${list.length}</b><span>capturées</span></div><div><b>${mast}/${list.length}</b><span>maîtrisées</span></div></div>
-    <p class="note" style="margin-top:0">Une créature est <b>capturée</b> dès ta première victoire, et <b>maîtrisée</b> quand tu l'as battue à vue et à l'oreille (ou dans son seul mode pour celles qui ne se chassent qu'à vue ou qu'à l'oreille).</p>
+    <p class="note" style="margin-top:0">Une créature est <b>capturée</b> dès ta première victoire, et <b>maîtrisée</b> quand tu l'as battue à vue et à l'ouïe (ou dans son seul mode pour celles qui ne se chassent qu'à vue ou qu'à l'ouïe).</p>
     <p class="note">Chaque créature battue rejoint ton bestiaire. Certaines sont rares, d'autres ne sortent que la nuit, à la pleine lune ou à certaines périodes de l'année.</p>
     <div class="fl" style="margin:8px 0 4px">${sorts}</div>
     ${cards}</section>${renderBeastView()}`;
@@ -1397,10 +1397,10 @@ function renderBeastView() {
   else if (!captured(e)) body = `${beastImg(be, 'locked')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)}</p><p>Rencontrée, mais pas encore vaincue.</p>`;
   else {
     const seal = (k, n, on) => `<span class="seal${on ? ' on' : ''}">Vaincu ${n}</span>`;
-    const seals = be.mode === 'both' ? seal('w', 'à vue', e.wins) + seal('e', 'à l\'oreille', e.winsE) : be.mode === 'w' ? seal('w', 'à vue', e.wins) : seal('e', 'à l\'oreille', e.winsE);
+    const seals = be.mode === 'both' ? seal('w', 'à vue', e.wins) + seal('e', 'à l\'ouïe', e.winsE) : be.mode === 'w' ? seal('w', 'à vue', e.wins) : seal('e', 'à l\'ouïe', e.winsE);
     body = `${beastImg(be, '')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)} · ${rarChip(be)}</p>
-      <div class="seals">${seals}</div>${be.mode !== 'both' ? `<p class="hint">Ne se chasse qu'${be.mode === 'w' ? 'à vue' : 'à l\'oreille'}.</p>` : ''}
-      <div class="lore"><h4>La légende</h4><p>${esc(be.story)}</p><h4>Le savais-tu ?</h4><p>${esc(be.fact)}</p><h4>Pour le vaincre</h4><p>${esc(be.tip)}</p></div>
+      <div class="seals">${seals}</div>${be.mode !== 'both' ? `<p class="hint">Ne se chasse qu'${be.mode === 'w' ? 'à vue' : 'à l\'ouïe'}.</p>` : ''}
+      <div class="lore"><h4>La légende</h4><p>${esc(be.story)}</p><h4>Le savais-tu ?</h4><p>${esc(be.fact)}</p></div>
       <div class="rules">${be.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><p class="hint">${plural((e.wins || 0) + (e.winsE || 0), 'victoire', 'victoires')} · première le ${date(e.first)}</p>`;
   }
   return `<div class="bview bb" data-a="bclose"><div>${body}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
@@ -1497,7 +1497,7 @@ function renderHeader() {
   $('#sStreak').innerHTML = `${ring(tc / g, 20, 3.5)}<span><b>${Math.min(tc, g)}/${g}</b> aujourd'hui</span><span class="sep">·</span>${flame}<span>${st ? `<b>${plural(st, 'jour', 'jours')}</b> d'affilée` : 'série à lancer'}</span>`;
   const lb = cfg.lastBadge;
   $('#sBest').textContent = 'points · ' + titleOf(sc);
-  $('#sTrack').innerHTML = TR === 'e' ? `Oreille · <b>${fmt(scoreE())}</b> pts` : `Vue · <b>${fmt(scoreW())}</b> pts`;
+  $('#sTrack').innerHTML = TR === 'e' ? `Ouïe · <b>${fmt(scoreE())}</b> pts` : `Vue · <b>${fmt(scoreW())}</b> pts`;
   $('#lastBtn').innerHTML = lb ? `<img src="badge-${esc(lb.img)}.webp" alt="">` : '';
   $('#lastBtn').style.visibility = lb ? '' : 'hidden';
   const counts = INTER.map((_, i) => all.filter(w => lvlOf(w) === i).length);
@@ -1833,7 +1833,7 @@ function autoSay(key, text, langId) {
 const WELCOME = [
   ['Bienvenue !', 'Mon vocabulaire t\'aide à retenir les mots de tes cours. Commence par ajouter tes mots dans l\'onglet <b>Ajouter</b> : un par un, en collant une liste, ou en demandant une liste toute prête à une IA (l\'appli te prépare la demande).'],
   ['Réviser au bon moment', 'Traduis chaque mot en écrivant ta réponse. Juste : le mot monte d\'une case et revient plus tard (1 jour, 3 jours, 1 semaine… jusqu\'à 3 mois). Raté : il revient vite. Plus un mot monte, plus il rapporte de points.'],
-  ['Vue, Oreille et Monstres', 'En <b>Vue</b>, tu lis le mot. À l\'<b>Oreille</b>, tu l\'entends seulement : réponds dans sa langue (dictée) ou en français (compréhension). Chacun a son Sprint et son Duel. Dans <b>Monstres</b>, bats les créatures du folklore pour remplir ton bestiaire.'],
+  ['Vue, Ouïe et Monstres', 'En <b>Vue</b>, tu lis le mot. En <b>Ouïe</b>, tu l\'entends seulement : réponds dans sa langue (dictée) ou en français (compréhension). Chacun a son Sprint et son Duel. Dans <b>Monstres</b>, bats les créatures du folklore pour remplir ton bestiaire.'],
   ['Progresser', 'Chaque jour, un défi : 10, 20, 30 ou 50 bonnes réponses. Enchaîne les jours, gagne des titres, des badges… et trouve les badges secrets. Touche la ligne du défi en haut pour voir ta progression.']
 ];
 function renderWelcome() {

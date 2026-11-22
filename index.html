@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3.0.1">
+<link rel="stylesheet" href="style.css?v=3.1.0">
 </head>
 <body>
 <header>
@@ -37,7 +37,7 @@
     </div>
     <nav role="tablist">
       <button role="tab" aria-selected="true" data-v="rev">Vue</button>
-      <button role="tab" aria-selected="false" data-v="ear">Oreille</button>
+      <button role="tab" aria-selected="false" data-v="ear">Ouïe</button>
       <button role="tab" aria-selected="false" data-v="hunt">Monstres</button>
       <button role="tab" aria-selected="false" data-v="lib">Bibliothèque</button>
       <button role="tab" aria-selected="false" data-v="add" class="plus" aria-label="Ajouter des mots">+</button>
@@ -47,7 +47,7 @@
 <main class="wrap" id="main"></main>
 <div id="toast" role="status"><span id="toastT"></span><button id="toastB" type="button">Annuler</button></div>
 
-<script src="app.js?v=3.0.1"></script>
+<script src="app.js?v=3.1.0"></script>
 <script>
 if('serviceWorker' in navigator && location.protocol!=='file:'){
   window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(function(r){ r.update(); }).catch(function(){}); });
