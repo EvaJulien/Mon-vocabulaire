@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.4.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -318,6 +318,7 @@ function addWords(pairs, lang, lib) {
     words.set(w.id, w); byKey.set(k, w); backend.put(w); added++;
   }
   if (cfg._dirty) { delete cfg._dirty; saveCfg(); }
+  if (added) { const t0 = midnight(Date.now()); if ([...words.values()].filter(w => (w.added || 0) >= t0).length >= 100) award('boulimique'); }
   return { added, merged };
 }
 function parseImport(text) {
@@ -365,9 +366,10 @@ function addLanguage(name, code) {
 }
 
 /* ---------- progress ---------- */
-const TITLES = [[0, 'Débutant'], [50, 'Apprenti'], [150, 'Explorateur'], [400, 'Voyageur'], [1000, 'Polyglotte'], [2500, 'Maître des mots'], [5000, 'Légende']];
+// the last title is hidden: it is never announced before being reached
+const TITLES = [[0, 'Débutant'], [50, 'Apprenti'], [150, 'Explorateur'], [400, 'Voyageur'], [1000, 'Polyglotte'], [2500, 'Maître des mots'], [5000, 'Légende'], [20000, 'Immortel', true]];
 const titleOf = sc => { let t = TITLES[0]; for (const x of TITLES) if (sc >= x[0]) t = x; return t[1]; };
-const nextTitle = sc => TITLES.find(x => x[0] > sc);
+const nextTitle = sc => TITLES.find(x => x[0] > sc && !x[2]);
 const goalOf = () => cfg.stats.goal || 20;
 const todayCount = () => (cfg.stats.days || {})[ymd(Date.now())] || 0;
 // goal of a given day (remembered for each day, so changing the goal does not rewrite the past)
@@ -393,41 +395,132 @@ function addDay() {
 const ring = (p, size, sw, col) => { const r = (size - sw) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(1, p)); return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="${sw}"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${col || 'var(--accent)'}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c * v} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`; };
 
 /* ---------- badges ---------- */
-// each category has 5 tiers with their own names, growing in strength
+// 10 families of 6 tiers; each tier has its own name and picture (badge-<img>-<tier>.webp)
+const ACH_VER = 3;
 const ACH = [
   { id: 'goal', label: 'Défis du jour réussis', unit: 'défis réussis', steps: [1, 10, 50, 100, 365, 730], names: ['Premier défi', 'Assidu', 'Acharné', 'Infatigable', 'Légende du quotidien', 'Éternel'], img: 'defis' },
-  { id: 'streak', label: 'Jours d\'affilée', unit: 'jours d\'affilée', steps: [3, 7, 30, 100, 365], names: ['Petite flamme', 'Feu de camp', 'Brasier', 'Volcan', 'Soleil'] },
-  { id: 'combo', label: 'Bonnes réponses d\'affilée', unit: 'bonnes réponses d\'affilée', steps: [10, 25, 50, 100, 200], names: ['En rythme', 'Sur sa lancée', 'Inarrêtable', 'Machine', 'Perfection'] },
-  { id: 'words', label: 'Mots dans ta bibliothèque', unit: 'mots', steps: [250, 500, 1000, 2500, 5000], names: ['Carnet', 'Cahier', 'Dictionnaire', 'Encyclopédie', 'Grande bibliothèque'] },
-  { id: 'mastered', label: 'Mots maîtrisés', unit: 'mots maîtrisés', steps: [1, 50, 200, 500, 1000], names: ['Première graine', 'Jeune pousse', 'Arbuste', 'Grand arbre', 'Forêt'] },
-  { id: 'sprint', label: 'Sprint 60 s', unit: 'bonnes réponses en 60 s', steps: [10, 15, 20, 25, 30], names: ['Rapide', 'Fusée', 'Éclair', 'Supersonique', 'Vitesse lumière'] },
-  { id: 'boss', label: 'Boss battus', unit: 'boss battus', steps: [1, 5, 20, 50, 100], names: ['Chasseur', 'Guerrier', 'Champion', 'Héros', 'Légende'] },
-  { id: 'duels', label: 'Duels joués', unit: 'duels joués', steps: [1, 5, 20, 50, 100], names: ['Challenger', 'Rival', 'Duelliste', 'Gladiateur', 'Maître d\'armes'] },
-  { id: 'langs', label: 'Polyglotte', unit: 'langues avec au moins 50 mots', steps: [2, 3, 4, 5, 6], names: ['Bilingue', 'Trilingue', 'Polyglotte', 'Grand voyageur', 'Citoyen du monde'] }
+  { id: 'streak', label: 'Jours d\'affilée', unit: 'jours d\'affilée', steps: [3, 7, 30, 100, 200, 365], names: ['Petite flamme', 'Brasier', 'Incendie', 'Volcan', 'Soleil', 'Supernova'], img: 'serie' },
+  { id: 'combo', label: 'Bonnes réponses d\'affilée', unit: 'bonnes réponses d\'affilée', steps: [10, 25, 50, 100, 200, 500], names: ['En rythme', 'Sur sa lancée', 'Inarrêtable', 'Machine', 'Perfection', 'Dieu vivant'], img: 'combo' },
+  { id: 'total', label: 'Ascension', unit: 'bonnes réponses au total', steps: [100, 500, 2000, 5000, 15000, 30000], names: ['Caillou', 'Rocher', 'Colline', 'Montagne', 'Sommet enneigé', 'Olympe'], img: 'ascension' },
+  { id: 'words', label: 'Mots dans une bibliothèque', unit: 'mots dans une même langue', steps: [250, 1000, 2500, 5000, 8000, 12000], names: ['Carnet', 'Cahier', 'Dictionnaire', 'Encyclopédie', 'Grande bibliothèque', 'Bibliothèque d\'Alexandrie'], img: 'mots' },
+  { id: 'mastered', label: 'Mots maîtrisés', unit: 'mots maîtrisés dans une même langue', steps: [1, 100, 500, 1500, 3000, 6000], names: ['Première graine', 'Jeune pousse', 'Arbuste', 'Grand arbre', 'Forêt', 'Arbre-monde'], img: 'maitrise' },
+  { id: 'sprint', label: 'Sprint 60 s', unit: 'bonnes réponses en 60 s', steps: [10, 15, 20, 25, 30, 40], names: ['Étincelle', 'Double éclair', 'Boule de foudre', 'Orage', 'Tempête', 'Foudre divine'], img: 'sprint' },
+  { id: 'boss', label: 'Boss battus', unit: 'boss battus (un seul compte par jour)', steps: [1, 10, 50, 150, 300, 500], names: ['Genin', 'Chūnin', 'Jōnin', 'Rōnin', 'Shōgun', 'Kami'], img: 'boss' },
+  { id: 'duels', label: 'Duels joués', unit: 'duels joués', steps: [1, 5, 20, 50, 100, 500], names: ['Challenger', 'Rival', 'Duelliste', 'Gladiateur', 'Maître d\'armes', 'Gladiateur invaincu'], img: 'duels' },
+  { id: 'langs', label: 'Polyglotte', unit: 'langues parlées', hint: 'Le français compte pour une langue, puis chaque langue où tu maîtrises au moins 500 mots.', steps: [2, 3, 4, 5, 6, 8], names: ['Bilingue', 'Trilingue', 'Polyglotte', 'Interprète', 'Bâtisseur', 'Tour de Babel'], img: 'langues' }
 ];
+// secret badges: hidden ("?") until found
+const SECRETS = [
+  ['oiseau-nuit', 'Oiseau de nuit', 'Réviser entre minuit et 4 h du matin.'],
+  ['leve-tot', 'Lève-tôt', 'Réviser entre 4 h et 6 h du matin.'],
+  ['phenix', 'Phénix', 'Battre un boss avec une seule vie restante.'],
+  ['fair-play', 'Fair-play', 'Perdre un duel 0 à 10.'],
+  ['marathonien', 'Marathonien', 'Faire 300 bonnes réponses dans la journée.'],
+  ['retour-heros', 'Le retour du héros', 'Revenir réviser après plus de 30 jours d\'absence.'],
+  ['sans-filet', 'Sans filet', 'Faire au moins 20 bonnes réponses dans la journée sans aucune erreur.'],
+  ['photo-finish', 'Photo finish', 'Trouver une bonne réponse dans la dernière seconde d\'un sprint.'],
+  ['meteore', 'Météore', 'Faire 10 bonnes réponses en 15 secondes pendant un sprint.'],
+  ['vengeance', 'Vengeance', 'Battre un boss juste après avoir perdu contre lui.'],
+  ['jour-an', 'Jour de l\'an', 'Réviser le 1er janvier.'],
+  ['lutin', 'Lutin studieux', 'Réviser le 25 décembre.'],
+  ['grand-ecart', 'Grand écart', 'Répondre dans 3 langues différentes le même jour.'],
+  ['feu-sacre', 'Feu sacré', 'Réussir un défi de 50 sept jours de suite.'],
+  ['collectionneur', 'Collectionneur', 'Obtenir le premier niveau de toutes les familles de succès.'],
+  ['faucheuse', 'La Faucheuse', 'Réviser le soir d\'Halloween, le 31 octobre.'],
+  ['coeur', 'Cœur d\'artichaut', 'Réviser le jour de la Saint-Valentin.'],
+  ['poisson-avril', 'Poisson d\'avril', 'Réviser le 1er avril.'],
+  ['seollal', 'Seollal', 'Réviser du coréen pendant le Nouvel An coréen.'],
+  ['un-an', 'Un an déjà', 'Utiliser l\'appli un an après avoir ajouté ton premier mot.'],
+  ['sisyphe', 'Sisyphe', 'Rater le même mot 10 fois.'],
+  ['elephant', 'Mémoire d\'éléphant', 'Amener un mot jusqu\'à la case 3 mois sans jamais le rater.'],
+  ['insomniaque', 'Insomniaque', 'Réviser entre minuit et 4 h trois nuits dans la même semaine.'],
+  ['boulimique', 'Boulimique', 'Ajouter 100 mots dans la même journée.'],
+  ['perfectionniste', 'Perfectionniste', 'Réussir un défi de 50 sans aucune erreur dans la journée.'],
+  ['escargot', 'Escargot', 'Finir un sprint sans aucune bonne réponse.']
+];
+const SEOLLAL = ['2026-02-17', '2027-02-06', '2028-01-26', '2029-02-13', '2030-02-03', '2031-01-23', '2032-02-11', '2033-01-31', '2034-02-19', '2035-02-08', '2036-01-28'];
 const GOAL_COL = { 10: '#3b82f6', 20: '#16a34a', 30: '#f59e0b', 50: '#e11d48' };
 const TIER_COL = ['#c4874f', '#9aa7b8', '#e8b923', '#5cc6cf', '#a77bf0', '#1b1b22'];
+const isKorean = id => { const l = id && id !== 'fr' && getLang(id); return !!l && (l.code === 'ko' || /cor/i.test(l.name)); };
 function achValues() {
   const all = [...words.values()], st = cfg.stats, days = st.days || {};
+  const perLang = f => Math.max(0, ...cfg.langs.map(l => all.filter(w => wLang(w) === l.id && f(w)).length));
+  const sumOk = all.reduce((n, w) => n + (w.ok || 0), 0);
+  if (sumOk > (st.totalOk || 0)) st.totalOk = sumOk;
   return {
     goal: Object.keys(days).filter(k => days[k] >= dayGoal(k)).length,
     streak: Math.max(streakNow(), st.best || 0),
     combo: st.bestCombo || 0,
-    words: all.length,
-    mastered: all.filter(w => w.lvl === TOP).length,
+    total: st.totalOk || 0,
+    words: perLang(() => true),
+    mastered: perLang(w => w.lvl === TOP),
     sprint: st.sprintBest || 0,
-    boss: st.bossWins || 0,
+    boss: st.bossDays ?? (st.bossWins || 0),
     duels: st.duels || 0,
-    langs: cfg.langs.filter(l => all.filter(w => wLang(w) === l.id).length >= 50).length
+    langs: 1 + cfg.langs.filter(l => all.filter(w => wLang(w) === l.id && w.lvl === TOP).length >= 500).length
   };
 }
 const tierOf = (a, v) => a.steps.filter(x => v >= x).length;
-// returns the newly reached tiers; the first time it runs it records the current state silently
+const secretOf = id => SECRETS.find(x => x[0] === id);
+// gives a secret badge once; it is announced by celebrate()
+function award(id) {
+  cfg.secrets = cfg.secrets || {};
+  if (cfg.secrets[id] || !secretOf(id)) return;
+  cfg.secrets = { ...cfg.secrets, [id]: Date.now() };
+  cfg.lastBadge = { img: 'secret-' + id, name: secretOf(id)[1], t: Date.now() };
+  (ui.newSecrets = ui.newSecrets || []).push(id);
+  saveCfg();
+}
+// returns the newly reached tiers; the first time (or after a badge rework) it records the current state silently
 function checkBadges() {
-  const v = achValues(), first = !cfg.tiers, prev = cfg.tiers || {}, now = {}, nw = [];
+  const v = achValues(), first = !cfg.tiers || cfg.achVer !== ACH_VER, prev = cfg.tiers || {}, now = {}, nw = [];
   ACH.forEach(a => { now[a.id] = tierOf(a, v[a.id]); if (!first && now[a.id] > (prev[a.id] || 0)) nw.push([a, now[a.id]]); });
-  if (first || ACH.some(a => now[a.id] !== (prev[a.id] || 0))) { cfg.tiers = now; saveCfg(); }
+  if (first || ACH.some(a => now[a.id] !== (prev[a.id] || 0))) {
+    cfg.tiers = now; cfg.achVer = ACH_VER;
+    const dates = { ...(cfg.tierDates || {}) };
+    nw.forEach(([a, t]) => { for (let i = (prev[a.id] || 0) + 1; i <= t; i++) dates[a.id + '-' + i] = Date.now(); });
+    cfg.tierDates = dates;
+    if (nw.length) { const [a, t] = nw[nw.length - 1]; cfg.lastBadge = { img: a.img + '-' + t, name: a.names[t - 1], t: Date.now() }; }
+    saveCfg();
+  }
+  if (ACH.every(a => now[a.id] >= 1)) award('collectionneur');
   return nw;
+}
+// secret badges checked after each answer (ev: { ok, q, mode })
+function secretsAfterAnswer(ev) {
+  const st = cfg.stats, now = new Date(), h = now.getHours(), k = ymd(Date.now()), md = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0'), today = midnight(Date.now());
+  // absence of more than 30 days (lastSeen = last answer)
+  if (st.lastSeen && Date.now() - st.lastSeen > 30 * DAY) award('retour-heros');
+  st.lastSeen = Date.now();
+  const timeOk = clockOk(); st.maxSeen = Math.max(st.maxSeen || 0, Date.now());
+  if (!ev.ok) {
+    st.wrongDays = { ...(st.wrongDays || {}), [k]: ((st.wrongDays || {})[k] || 0) + 1 };
+    const wd = Object.keys(st.wrongDays); if (wd.length > 40) wd.sort().slice(0, wd.length - 40).forEach(x => delete st.wrongDays[x]);
+    const w = ev.q && words.get(ev.q.id); if (w && w.ko >= 10) award('sisyphe');
+    return;
+  }
+  if (!timeOk) return;
+  if (h < 4) {
+    award('oiseau-nuit');
+    const nights = [...new Set([...(st.nights || []), today])].filter(x => today - x < 7 * DAY);
+    st.nights = nights; if (nights.length >= 3) award('insomniaque');
+  } else if (h < 6) award('leve-tot');
+  if (md === '01-01') award('jour-an');
+  if (md === '12-25') award('lutin');
+  if (md === '10-31') award('faucheuse');
+  if (md === '02-14') award('coeur');
+  if (md === '04-01') award('poisson-avril');
+  if (ev.q && (isKorean(ev.q.pl) || isKorean(ev.q.al)) && SEOLLAL.some(d => { const [y, m, dd] = d.split('-').map(Number); return Math.abs(new Date(y, m - 1, dd).getTime() - today) <= 1.5 * DAY; })) award('seollal');
+  if (ev.q) { const al = st.alDay && st.alDay.d === k ? st.alDay.l : []; if (!al.includes(ev.q.al)) st.alDay = { d: k, l: [...al, ev.q.al] }; if (st.alDay.l.length >= 3) award('grand-ecart'); }
+  const n = todayCount(), wrong = (st.wrongDays || {})[k] || 0;
+  if (n >= 300) award('marathonien');
+  if (n >= 20 && !wrong) award('sans-filet');
+  if (dayGoal(k) === 50 && n >= 50 && !wrong) award('perfectionniste');
+  if (dayGoal(k) === 50 && n >= 50) { let ok7 = true; for (let i = 0; i < 7; i++) { const d = ymd(Date.now() - i * DAY); if (dayGoal(d) !== 50 || ((st.days || {})[d] || 0) < 50) ok7 = false; } if (ok7) award('feu-sacre'); }
+  const w = ev.q && words.get(ev.q.id);
+  if (w && w.lvl === TOP && !w.ko) award('elephant');
+  const all = [...words.values()], first = Math.min(...all.map(x => x.added || Date.now()));
+  if (all.length && Date.now() - first >= 365 * DAY) award('un-an');
 }
 // after any answer: daily goal, new badges, mastered word → message + confetti
 function celebrate() {
@@ -435,7 +528,8 @@ function celebrate() {
   let fx = false;
   if (ui.fxMastered) { ui.fxMastered = false; fx = true; }
   if (ui.goalDone) { ui.goalDone = false; msg.push('Défi du jour réussi !'); }
-  if (nb.length) msg.push((nb.length > 1 ? 'Nouveaux succès : ' : 'Nouveau succès : ') + nb.map(([a, t]) => `${a.names[t - 1]} (${a.steps[t - 1]} ${a.unit})`).join(', '));
+  if (nb.length) msg.push((nb.length > 1 ? 'Nouveaux succès : ' : 'Nouveau succès : ') + nb.map(([a, t]) => `${a.names[t - 1]} (${a.label})`).join(', '));
+  if (ui.newSecrets?.length) { msg.push((ui.newSecrets.length > 1 ? 'Badges secrets : ' : 'Badge secret : ') + ui.newSecrets.map(id => secretOf(id)[1]).join(', ') + ' !'); ui.newSecrets = []; }
   if (msg.length) { saveCfg(); toast(msg.join(' · ')); fx = true; }
   if (fx) confetti();
   if (msg.length) renderHeader();
@@ -539,6 +633,7 @@ function submit(val) {
     s.cur.given = val;
     if (check(val, s.cur)) { s.cur.loose = s.cur.al === 'fr' && !s.cur.answers.flatMap(variants).some(t => norm(t) === norm(val)); grade(w, true); s.state = 'right'; }
     else { grade(w, false); s.state = 'wrong'; }
+    secretsAfterAnswer({ ok: s.state === 'right', q: s.cur });
     render();
     celebrate();
   }
@@ -647,6 +742,7 @@ function sprintEnd() {
   sp.state = 'end';
   sp.record = sp.score > (cfg.stats.sprintBest || 0);
   if (sp.record) { cfg.stats.sprintBest = sp.score; saveCfg(); confetti(); }
+  if (!sp.score) award('escargot');
   if (view === 'rev' && ui.mode === 'sprint') { document.activeElement?.blur?.(); render(); }
   celebrate();
 }
@@ -656,6 +752,12 @@ function sprintAnswer(val) {
   const q = sp.cur, w = words.get(q.id), ok = check(val, q);
   if (w) applyResult(w, ok);
   if (ok) { sp.score++; sp.combo++; if (sp.combo > (cfg.stats.bestCombo || 0)) cfg.stats.bestCombo = sp.combo; } else { sp.wrong++; sp.combo = 0; }
+  if (ok) {
+    if (sp.end - Date.now() < 1000) award('photo-finish');
+    sp.hits = [...(sp.hits || []), Date.now()].slice(-10);
+    if (sp.hits.length >= 10 && sp.hits[9] - sp.hits[0] <= 15000) award('meteore');
+  }
+  secretsAfterAnswer({ ok, q });
   sp.flash = { ok, p: q.prompt.join(' / '), a: q.answers.join(' ou ') };
   sp.last = [q.id, ...sp.last].slice(0, 6);
   sp.cur = pickQ(sp.last) || q;
@@ -678,39 +780,153 @@ function renderSprint() {
   </div>`;
 }
 
-/* boss */
-const BOSS_LIVES = 3;
-function bossPool() {
+/* boss: creatures of the world's folklore, collected in the bestiary */
+// rate = hidden chance (%) when the creature can appear; has = its picture exists (boss-<id>.webp)
+// cond: always | night | fullmoon | winter | winternight | halloween | december | korean
+// rules: classic, fragile (1 life), chrono (10 s per word), colossus (20 words, 5 lives),
+//        hydra (an error adds a word), greedy (an error gives it back a word), strict (no typo), trick (answer language changes)
+const BEASTS = [
+  { id: 'gobelin', name: 'Gobelin', from: 'Europe', rar: 'Commun', rate: 6, cond: 'always', rules: ['classic'], has: true, txt: 'Petit, rusé et chapardeur, il hante les caves et les forêts d\'Europe. Il adore les mauvais tours, surtout aux voyageurs distraits.' },
+  { id: 'kappa', name: 'Kappa', from: 'Japon', rar: 'Commun', rate: 5, cond: 'always', rules: ['classic'], has: true, txt: 'Lutin des rivières japonaises, il garde de l\'eau dans la coupelle de son crâne. Salue-le poliment : en s\'inclinant, il la renverse et perd sa force.' },
+  { id: 'troll', name: 'Troll', from: 'Scandinavie', rar: 'Commun', rate: 5, cond: 'always', rules: ['colossus'], has: true, txt: 'Géant des montagnes du Nord, lent mais d\'une force colossale. La légende dit que la lumière du soleil le change en pierre.' },
+  { id: 'golem', name: 'Golem', from: 'Europe centrale', rar: 'Commun', rate: 5, cond: 'always', rules: ['colossus'], has: true, txt: 'Façonné dans l\'argile au bord de la Vltava, à Prague, il prend vie grâce à un mot gravé sur son front. Il obéit sans relâche, sans jamais se fatiguer.' },
+  { id: 'minotaure', name: 'Minotaure', from: 'Grèce', rar: 'Commun', rate: 5, cond: 'always', rules: ['classic'], has: true, txt: 'Mi-homme mi-taureau, enfermé dans le labyrinthe du roi Minos en Crète. Il fallut le fil d\'Ariane pour que Thésée en ressorte vivant.' },
+  { id: 'harpie', name: 'Harpie', from: 'Grèce', rar: 'Commun', rate: 5, cond: 'always', rules: ['chrono'], has: true, txt: 'Rapide comme la tempête, elle fond sur sa proie et l\'emporte avant qu\'on ait compris. Ne traîne pas pour répondre !' },
+  { id: 'tengu', name: 'Tengu', from: 'Japon', rar: 'Commun', rate: 5, cond: 'always', rules: ['chrono'], has: true, txt: 'Esprit fier des montagnes japonaises, maître du sabre et des arts martiaux. On dit qu\'il enseigna l\'escrime aux plus grands guerriers.' },
+  { id: 'chupacabra', name: 'Chupacabra', from: 'Amérique latine', rar: 'Commun', rate: 4, cond: 'always', rules: ['classic'], has: true, txt: 'Aperçu à Porto Rico puis au Mexique, ce « suceur de chèvres » rôde la nuit autour des fermes. Personne n\'en a jamais attrapé un.' },
+  { id: 'kelpie', name: 'Kelpie', from: 'Écosse', rar: 'Commun', rate: 4, cond: 'always', rules: ['fragile'], has: true, txt: 'Cheval noir des lochs écossais, il invite les voyageurs à monter sur son dos… puis plonge au fond de l\'eau. Une seule erreur suffit.' },
+  { id: 'dokkaebi', name: 'Dokkaebi', from: 'Corée', rar: 'Commun', rate: 4.5, cond: 'korean', rules: ['classic'], has: true, txt: 'Lutin farceur coréen, armé d\'un gourdin magique qui fait apparaître tout ce qu\'il souhaite. Il adore les défis, les jeux et la lutte.' },
+  { id: 'hydre', name: 'Hydre', from: 'Grèce', rar: 'Rare', rate: 3, cond: 'always', rules: ['hydra'], has: true, txt: 'Le monstre du marais de Lerne : chaque tête tranchée en fait repousser une autre. Chaque erreur ajoute un mot au combat.' },
+  { id: 'meduse', name: 'Méduse', from: 'Grèce', rar: 'Rare', rate: 3, cond: 'always', rules: ['chrono'], has: true, txt: 'La Gorgone aux cheveux de serpents : un seul regard et l\'on se change en pierre. Réponds vite, avant d\'être pétrifié.' },
+  { id: 'sphinx', name: 'Sphinx', from: 'Égypte', rar: 'Rare', rate: 3, cond: 'always', rules: ['strict'], has: true, txt: 'Gardien des cités, il pose une énigme à chaque passant et dévore ceux qui se trompent. Aucune faute de frappe n\'est tolérée.' },
+  { id: 'djinn', name: 'Djinn', from: 'Arabie', rar: 'Rare', rate: 3, cond: 'always', rules: ['trick'], has: false, txt: 'Esprit de fumée et de feu, enfermé dans une lampe. Il exauce les vœux… à sa façon. Méfie-toi : il change la langue de réponse à chaque mot.' },
+  { id: 'babayaga', name: 'Baba Yaga', from: 'Russie', rar: 'Rare', rate: 3, cond: 'always', rules: ['greedy'], has: false, txt: 'La sorcière des forêts slaves vole dans un mortier et vit dans une isba sur pattes de poule. Chaque erreur la renforce.' },
+  { id: 'gumiho', name: 'Gumiho', from: 'Corée', rar: 'Rare', rate: 3, cond: 'korean', rules: ['trick'], has: false, txt: 'Renard à neuf queues de la légende coréenne, maître de l\'illusion. Il brouille les pistes en changeant la langue à chaque mot.' },
+  { id: 'banshee', name: 'Banshee', from: 'Irlande', rar: 'Nocturne', rate: 4, cond: 'night', rules: ['fragile'], has: false, txt: 'Son cri déchire la nuit irlandaise. Elle n\'apparaît qu\'à la nuit tombée, et ne laisse aucune seconde chance.' },
+  { id: 'strigoi', name: 'Strigoï', from: 'Roumanie', rar: 'Nocturne', rate: 4, cond: 'night', rules: ['greedy'], has: false, txt: 'Le vampire des Carpates sort de sa tombe à la nuit tombée. Chaque erreur le nourrit et lui rend des forces.' },
+  { id: 'loupgarou', name: 'Loup-garou', from: 'Europe', rar: 'Nocturne', rate: 6, cond: 'fullmoon', rules: ['colossus', 'chrono'], has: false, txt: 'Homme le jour, bête les soirs de pleine lune. On ne le croise que lorsque la lune est pleine.' },
+  { id: 'yeti', name: 'Yéti', from: 'Himalaya', rar: 'Saisonnier', rate: 4, cond: 'winter', rules: ['colossus'], has: false, txt: 'L\'abominable homme des neiges laisse d\'immenses traces dans les cols de l\'Himalaya. Il ne descend qu\'en hiver.' },
+  { id: 'wendigo', name: 'Wendigo', from: 'Amérique du Nord', rar: 'Saisonnier', rate: 3, cond: 'winternight', rules: ['greedy'], has: false, txt: 'Esprit de la faim des forêts glacées, il rôde les nuits d\'hiver. Il ne se rassasie jamais : chaque erreur le nourrit.' },
+  { id: 'cavalier', name: 'Cavalier sans tête', from: 'Irlande et Amérique', rar: 'Saisonnier', rate: 6, cond: 'halloween', rules: ['fragile', 'chrono'], has: false, txt: 'Il galope à la recherche de sa tête perdue. On ne le croise que pendant la semaine d\'Halloween.' },
+  { id: 'krampus', name: 'Krampus', from: 'Alpes', rar: 'Saisonnier', rate: 5, cond: 'december', rules: ['hydra'], has: false, txt: 'Le compagnon sombre de saint Nicolas punit les enfants pas sages. Il ne sort qu\'en décembre.' },
+  { id: 'kraken', name: 'Kraken', from: 'Scandinavie', rar: 'Légendaire', rate: 1, cond: 'always', rules: ['colossus', 'hydra'], has: false, txt: 'Le monstre des abysses de Norvège, si grand qu\'on le prenait pour une île. Très peu de marins l\'ont vu et sont revenus pour le raconter.' },
+  { id: 'dragon', name: 'Dragon', from: 'Partout dans le monde', rar: 'Légendaire', rate: 0.5, cond: 'always', rules: ['colossus', 'chrono'], has: false, txt: 'Présent dans presque toutes les cultures, de la Chine à l\'Europe. Le plus rare et le plus redoutable de tous.' }
+];
+const RULES = {
+  classic: 'Combat classique : 10 mots, 3 vies.',
+  fragile: 'Fragile : une seule vie.',
+  chrono: 'Chrono : 10 secondes par mot.',
+  colossus: 'Colosse : 20 mots, 5 vies.',
+  hydra: 'Hydre : chaque erreur ajoute un mot.',
+  greedy: 'Vorace : chaque erreur lui rend un mot de vie.',
+  strict: 'Implacable : aucune faute de frappe tolérée.',
+  trick: 'Trompeur : la langue de réponse change à chaque mot.'
+};
+const RAR_COL = { Commun: '#6b7f72', Rare: '#3b82f6', Nocturne: '#6d3fb0', Saisonnier: '#d97706', Légendaire: '#b91c1c' };
+const BOSS_MIN = 20, CHRONO_S = 10;
+const beast = id => BEASTS.find(x => x.id === id);
+// moon age in days (0 = new moon, ~14.8 = full moon), from a known new moon
+const moonAge = t => { const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14); return (((t - ref) / DAY) % syn + syn) % syn; };
+// if the clock went back in time, special appearances are blocked
+const clockOk = () => Date.now() >= (cfg.stats.maxSeen || 0) - 3600000;
+function beastCan(b) {
+  if (!b.has) return false;
+  const now = new Date(), h = now.getHours(), m = now.getMonth(), d = now.getDate();
+  if (b.cond === 'always') return true;
+  if (b.cond === 'korean') return cfg.filt.on.some(isKorean);
+  if (!clockOk()) return false;
+  const night = h >= 21 || h < 5, winter = m === 11 || m <= 1;
+  if (b.cond === 'night') return night;
+  if (b.cond === 'fullmoon') return Math.abs(moonAge(Date.now()) - 14.77) <= 1.2;
+  if (b.cond === 'winter') return winter;
+  if (b.cond === 'winternight') return winter && night;
+  if (b.cond === 'halloween') return (m === 9 && d >= 25) || (m === 10 && d <= 1);
+  if (b.cond === 'december') return m === 11;
+  return false;
+}
+// weighted draw among the creatures that can appear now, except the one that just fled
+function drawBeast() {
+  const fled = cfg.stats.fled, c = BEASTS.filter(b => beastCan(b) && b.id !== fled);
+  const list = c.length ? c : BEASTS.filter(beastCan);
+  let r = Math.random() * list.reduce((n, b) => n + b.rate, 0);
+  for (const b of list) { r -= b.rate; if (r <= 0) return b; }
+  return list[list.length - 1];
+}
+function bossPool(n) {
   const ok = askable(), c = [...words.values()].filter(ok);
   const hard = c.filter(w => w.ko > 0).sort((a, b) => (b.ko - b.ok * .3) - (a.ko - a.ok * .3) || a.lvl - b.lvl);
   const rest = c.filter(w => !w.ko).sort((a, b) => a.lvl - b.lvl || Math.random() - .5);
-  return [...hard, ...rest].slice(0, 10);
+  const top = [...hard, ...rest].slice(0, n * 2);
+  for (let i = top.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [top[i], top[j]] = [top[j], top[i]]; }
+  return { pick: top.slice(0, n), spare: [...hard, ...rest].filter(w => !top.slice(0, n).includes(w)), total: c.length };
 }
 function bossQ() {
   const b = ui.boss;
   while (b.i < b.ids.length && !words.get(b.ids[b.i])) b.i++;
   const w = words.get(b.ids[b.i]);
   if (!w) return null;
-  const qs = questions(w, answerLangs(), cpIndex());
-  return qs.length ? { id: w.id, ...qs[Math.floor(Math.random() * qs.length)] } : { id: w.id, prompt: w.en, pl: wLang(w), answers: w.fr, al: 'fr' };
+  const S = b.rules.includes('trick') ? uniq(['fr', ...cfg.filt.on]).sort(() => Math.random() - .5) : answerLangs();
+  let qs = questions(w, S, cpIndex());
+  if (b.rules.includes('trick') && qs.length > 1) { const al = qs[Math.floor(Math.random() * qs.length)].al; qs = qs.filter(q => q.al === al); }
+  const q = qs.length ? { id: w.id, ...qs[Math.floor(Math.random() * qs.length)] } : { id: w.id, prompt: w.en, pl: wLang(w), answers: w.fr, al: 'fr' };
+  if (b.rules.includes('chrono')) b.deadline = Date.now() + CHRONO_S * 1000;
+  return q;
+}
+let bossTimer = null;
+function stopBossTimer() { clearInterval(bossTimer); bossTimer = null; }
+function bossTick() {
+  const b = ui.boss;
+  if (!b || b.state !== 'run' || !b.rules.includes('chrono') || view !== 'rev' || ui.mode !== 'boss') return stopBossTimer();
+  if (b.phase !== 'ask') return;
+  const left = Math.max(0, (b.deadline - Date.now()) / 1000), t = $('#btime'), bar = $('#tbar');
+  if (t) t.textContent = Math.ceil(left);
+  if (bar) { bar.style.width = (left / CHRONO_S * 100) + '%'; bar.classList.toggle('low', left <= 3); }
+  if (left <= 0) bossAnswer('', true);
 }
 function bossStart() {
-  const ids = bossPool().map(w => w.id);
-  if (ids.length < 3) { toast('Il faut au moins 3 mots dans ta sélection pour affronter le boss.'); return; }
-  ui.boss = { state: 'run', ids, i: 0, lives: BOSS_LIVES, hits: 0, phase: 'ask' };
-  ui.boss.cur = bossQ();
-  ui.toCard = true;
+  const be = drawBeast();
+  if (!be) { toast('Aucune créature disponible pour l\'instant.'); return; }
+  const rules = be.rules, n = rules.includes('colossus') ? 20 : 10;
+  const pool = bossPool(n);
+  if (pool.total < BOSS_MIN) { toast(`Il faut au moins ${BOSS_MIN} mots dans ta sélection pour partir en chasse.`); return; }
+  const lives = rules.includes('fragile') ? 1 : rules.includes('colossus') ? 5 : 3;
+  ui.boss = { state: 'intro', beast: be.id, rules, ids: pool.pick.map(w => w.id), spare: pool.spare.map(w => w.id), i: 0, lives, maxLives: lives, hits: 0, phase: 'ask' };
+  // the creature that fled is only kept away for this one hunt
+  cfg.stats.fled = null;
+  const bs = { ...(cfg.beasts || {}) }; bs[be.id] = { ...(bs[be.id] || {}), seen: bs[be.id]?.seen || Date.now() }; cfg.beasts = bs; saveCfg();
+  document.activeElement?.blur?.();
+  render();
+}
+function bossFight() {
+  const b = ui.boss;
+  b.state = 'run'; b.cur = bossQ(); ui.toCard = true;
+  stopBossTimer(); if (b.rules.includes('chrono')) bossTimer = setInterval(bossTick, 200);
   render();
 }
 function bossEnd(win) {
   const b = ui.boss;
+  stopBossTimer();
   b.state = 'end'; b.win = win;
-  if (win) { cfg.stats.bossWins = (cfg.stats.bossWins || 0) + 1; saveCfg(); confetti(); }
+  const st = cfg.stats, k = ymd(Date.now());
+  const bs = { ...(cfg.beasts || {}) }, e = { ...(bs[b.beast] || {}) };
+  if (win) {
+    if (st.bossDays === undefined) st.bossDays = st.bossWins || 0;
+    st.bossWins = (st.bossWins || 0) + 1;
+    if (st.bossDay !== k) { st.bossDay = k; st.bossDays++; }
+    if (b.lives === 1 && b.maxLives > 1) award('phenix');
+    if (st.bossLost) award('vengeance');
+    st.bossLost = false;
+    b.newBeast = !e.wins;
+    e.wins = (e.wins || 0) + 1; if (!e.first) e.first = Date.now();
+    confetti();
+  } else { st.bossLost = true; st.fled = b.beast; e.lost = (e.lost || 0) + 1; }
+  bs[b.beast] = e; cfg.beasts = bs;
+  saveCfg();
   document.activeElement?.blur?.();
   render();
   celebrate();
 }
-function bossAnswer(val) {
+function bossAnswer(val, timeout) {
   const b = ui.boss;
   if (!b || b.state !== 'run') return;
   if (b.phase === 'res') {
@@ -721,32 +937,80 @@ function bossAnswer(val) {
     if (!b.cur) return bossEnd(true);
     b.phase = 'ask'; ui.toCard = true; render(); return;
   }
-  if (!val.trim()) return;
-  const q = b.cur, w = words.get(q.id), ok = check(val, q);
-  q.given = val; q.ok = ok;
-  if (ok) b.hits++; else b.lives--;
+  if (!timeout && !val.trim()) return;
+  const q = b.cur, w = words.get(q.id);
+  const ok = !timeout && (b.rules.includes('strict') ? q.answers.flatMap(variants).some(t => normT(t, q.al) === normT(val, q.al)) : check(val, q));
+  q.given = timeout ? '' : val; q.ok = ok; q.timeout = !!timeout;
+  if (ok) b.hits++;
+  else {
+    b.lives--;
+    // hydra: a new head (one more word); greedy: the missed word comes back at the end
+    if (b.rules.includes('hydra') && b.spare.length && b.ids.length < 30) b.ids.push(b.spare.shift());
+    if (b.rules.includes('greedy')) b.ids.push(q.id);
+  }
   if (w) applyResult(w, ok);
+  secretsAfterAnswer({ ok, q });
   b.phase = 'res';
   render();
   celebrate();
 }
-const bossFace = (mood) => `<svg class="bossface${mood === 'hit' ? ' hit' : ''}" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><path d="M14 18 8 4l14 9M50 18l6-14-14 9" fill="var(--btn)"/><ellipse cx="32" cy="38" rx="24" ry="22" fill="var(--btn)"/><ellipse cx="32" cy="44" rx="16" ry="10" fill="#000" fill-opacity=".15"/><circle cx="23" cy="34" r="6" fill="#fff"/><circle cx="41" cy="34" r="6" fill="#fff"/><circle cx="${mood === 'down' ? 23 : 24}" cy="${mood === 'down' ? 37 : 35}" r="2.6" fill="#111"/><circle cx="${mood === 'down' ? 41 : 42}" cy="${mood === 'down' ? 37 : 35}" r="2.6" fill="#111"/><path d="${mood === 'down' ? 'M24 50q8-6 16 0' : 'M22 47q10 8 20 0'}" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M27 47v4M37 47v4" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>`;
-const hearts = n => Array.from({ length: BOSS_LIVES }, (_, i) => `<svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21 2.5 11.5A5.5 5.5 0 0 1 12 4a5.5 5.5 0 0 1 9.5 7.5z" fill="${i < n ? 'var(--red)' : 'none'}" stroke="var(--red)" stroke-width="2"/></svg>`).join('');
+const beastImg = (be, cls) => `<img class="${cls || 'beast'}" src="boss-${be.id}.webp" alt="${esc(be.name)}">`;
+const rarChip = be => `<span class="rar" style="--rc:${RAR_COL[be.rar]}">${esc(be.rar)}</span>`;
+const hearts = (n, max) => Array.from({ length: max }, (_, i) => `<svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21 2.5 11.5A5.5 5.5 0 0 1 12 4a5.5 5.5 0 0 1 9.5 7.5z" fill="${i < n ? 'var(--red)' : 'none'}" stroke="var(--red)" stroke-width="2"/></svg>`).join('');
 function renderBoss() {
   const b = ui.boss || (ui.boss = { state: 'ready' });
+  const got = BEASTS.filter(x => x.has && (cfg.beasts || {})[x.id]?.wins).length, tot = BEASTS.filter(x => x.has).length;
+  const bestBtn = `<button class="btn ghost" data-a="bestiary">Bestiaire ${got}/${tot}</button>`;
   if (b.state === 'ready') {
-    const pool = bossPool();
-    return `<div class="card done game">${bossFace('')}<b class="big">Le boss</b><p>Affronte les ${pool.length >= 10 ? '10 mots' : plural(pool.length, 'mot', 'mots')} que tu rates le plus. Tu as ${BOSS_LIVES} vies : chaque erreur t'en coûte une.</p>${pool.length ? `<p class="hint">${pool.slice(0, 10).map(w => esc(w.en[0])).join(' · ')}</p>` : ''}<p class="hint">Boss battus : <b>${cfg.stats.bossWins || 0}</b></p><div class="row center"><button class="btn" data-a="bossgo">Affronter le boss</button></div></div>`;
+    const fled = cfg.stats.fled && beast(cfg.stats.fled);
+    return `<div class="card done game"><div class="beasts-q">${['?', '?', '?'].map(x => `<i>${x}</i>`).join('')}</div><b class="big">Chasse aux monstres</b><p>Des créatures du folklore du monde entier rôdent. Certaines sont communes, d'autres ne sortent que la nuit, à la pleine lune ou à certaines saisons. Bats-les pour les ajouter à ton bestiaire.</p>${fled ? `<p class="hint">${esc(fled.name)} s'est enfui lors du dernier combat.</p>` : ''}<div class="row center"><button class="btn" data-a="bossgo">Partir en chasse</button>${bestBtn}</div></div>`;
   }
-  if (b.state === 'end') return `<div class="card done game">${bossFace(b.win ? 'down' : '')}<b class="big">${b.win ? 'Boss battu !' : 'Le boss a gagné'}</b><p>${b.win ? `Bravo, ${plural(b.hits, 'bonne réponse', 'bonnes réponses')} et ${plural(b.lives, 'vie restante', 'vies restantes')}.` : 'Tu n\'as plus de vies. Ces mots sont repassés en case Nouv. : retente-le après les avoir révisés.'}</p><div class="row center"><button class="btn" data-a="bossgo">${b.win ? 'Nouveau boss' : 'Revanche'}</button></div></div>`;
-  const q = b.cur, n = b.ids.length, res = b.phase === 'res';
-  const hp = `<div class="hp" aria-label="Vie du boss">${b.ids.map((_, i) => `<i class="${i < b.i + (res && q.ok ? 1 : 0) ? 'gone' : ''}"></i>`).join('')}</div>`;
+  const be = beast(b.beast);
+  if (b.state === 'intro') {
+    const known = (cfg.beasts || {})[be.id]?.wins;
+    return `<div class="card done game beastcard">${beastImg(be, 'beast big appear')}<p class="hint" style="margin:0">Une créature apparaît !</p><b class="big">${esc(be.name)}</b><p style="margin:0">${rarChip(be)} <span class="hint">${esc(be.from)}</span></p>${known ? '<p class="hint">Déjà dans ton bestiaire.</p>' : '<p class="hint"><b>Nouvelle créature !</b></p>'}<div class="rules">${b.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><div class="row center"><button class="btn" data-a="bossfight">Combattre</button></div></div>`;
+  }
+  if (b.state === 'end') {
+    const msg = b.win ? `${b.newBeast ? `<b>${esc(be.name)}</b> rejoint ton bestiaire !` : `Encore une victoire contre ${esc(be.name)}.`} ${plural(b.hits, 'bonne réponse', 'bonnes réponses')}${b.maxLives > 1 ? `, ${plural(b.lives, 'vie restante', 'vies restantes')}` : ''}.` : `${esc(be.name)} s'est enfui. Tu ne le recroiseras pas au prochain combat. Les mots ratés sont repassés en case Nouv. : révise-les avant de repartir en chasse.`;
+    return `<div class="card done game beastcard">${beastImg(be, 'beast big' + (b.win ? ' beaten' : ' flee'))}<b class="big">${b.win ? esc(be.name) + ' vaincu !' : 'Il s\'est enfui…'}</b><p>${msg}</p><div class="row center"><button class="btn" data-a="bossgo">Repartir en chasse</button>${bestBtn}</div></div>`;
+  }
+  const q = b.cur, n = b.ids.length, res = b.phase === 'res', chrono = b.rules.includes('chrono');
+  const hp = `<div class="hp" aria-label="Vie de la créature">${b.ids.map((_, i) => `<i class="${i < b.i + (res && q.ok ? 1 : 0) ? 'gone' : ''}"></i>`).join('')}</div>`;
+  const left = chrono ? Math.max(0, Math.ceil((b.deadline - Date.now()) / 1000)) : 0;
+  if (chrono && !res && !bossTimer) bossTimer = setInterval(bossTick, 200);
   return `<div class="card ${res ? (q.ok ? 'ok' : 'ko') : ''}">
-    <div class="bosshead">${bossFace(res && q.ok ? 'hit' : '')}<div style="flex:1">${hp}<div class="dir" style="margin-top:8px"><span class="flag">${esc(flagOf(q))}</span><span>Mot ${b.i + 1}/${n}</span></div></div><div class="lives">${hearts(b.lives)}</div></div>
+    <div class="arena">${beastImg(be, 'beast mid' + (res && q.ok ? ' hit' : ''))}<div class="arena-top"><b>${esc(be.name)}</b><div class="lives">${hearts(b.lives, b.maxLives)}</div></div>${hp}</div>
+    <div class="dir" style="margin-top:10px"><span class="flag">${esc(flagOf(q))}</span><span>Mot ${b.i + 1}/${n}${chrono && !res ? ` · <b id="btime">${left}</b> s` : ''}</span></div>
+    ${chrono && !res ? `<div class="tbar"><i id="tbar" style="width:${left / CHRONO_S * 100}%"></i></div>` : ''}
     <div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>
-    ${res ? resultBox(q, q.ok) : ''}
+    ${res ? (q.timeout ? `<div class="flash ko">Trop lent ! La réponse était <b>${esc(q.answers.join(' ou '))}</b></div>` : resultBox(q, q.ok)) : ''}
     <form id="bf" autocomplete="off" style="margin-top:14px">${answerInput(q, res ? (b.lives <= 0 ? 'Entrée pour voir le résultat' : 'Entrée pour continuer') : 'En ' + langName(q.al) + '…', res ? 'next' : 'done')}<div class="row"><button class="btn grow" type="submit">${res ? (b.lives <= 0 || b.i + 1 >= n ? 'Voir le résultat' : 'Continuer') : 'Attaquer'}</button></div></form>
   </div>`;
+}
+
+/* bestiary: every creature, numbered; "?" if never met, silhouette if met but not beaten */
+function renderBest() {
+  const list = BEASTS.filter(x => x.has), bs = cfg.beasts || {};
+  const got = list.filter(x => bs[x.id]?.wins).length;
+  const cards = list.map((be, i) => {
+    const e = bs[be.id] || {}, num = String(i + 1).padStart(3, '0');
+    if (!e.seen) return `<button class="bcard" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}</span><div class="bq">?</div><b>???</b></button>`;
+    return `<button class="bcard${e.wins ? ' on' : ''}" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}</span>${beastImg(be, 'bimg2' + (e.wins ? '' : ' locked'))}<b>${esc(be.name)}</b>${e.wins ? rarChip(be) : '<span class="hint">Pas encore vaincu</span>'}</button>`;
+  }).join('');
+  return `<section><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Bestiaire <span class="note">${got}/${list.length}</span></h2><button class="btn ghost" data-a="bestback">Retour</button></div>
+    <p class="note">Chaque créature battue rejoint ton bestiaire. Certaines sont rares, d'autres ne sortent que la nuit, à la pleine lune ou à certaines périodes de l'année.</p>
+    <div class="bgrid">${cards}</div></section>${renderBeastView()}`;
+}
+function renderBeastView() {
+  const id = ui.beastView, be = id && beast(id);
+  if (!be) return '';
+  const e = (cfg.beasts || {})[id] || {}, num = String(BEASTS.filter(x => x.has).indexOf(be) + 1).padStart(3, '0');
+  const date = t => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  let body;
+  if (!e.seen) body = `<div class="q">?</div><b class="big2">N° ${num} · ???</b><p>Tu n'as pas encore croisé cette créature. Continue la chasse !</p>`;
+  else if (!e.wins) body = `${beastImg(be, 'locked')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)}</p><p>Rencontrée, mais pas encore vaincue.</p>`;
+  else body = `${beastImg(be, '')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)} · ${rarChip(be)}</p><p class="ltxt">${esc(be.txt)}</p><div class="rules">${be.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><p>${plural(e.wins, 'victoire', 'victoires')} · première le ${date(e.first)}</p>`;
+  return `<div class="bview" data-a="bclose"><div>${body}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
 }
 
 /* duel */
@@ -769,7 +1033,7 @@ function duelAnswer(val) {
     d.i++;
     if (d.i >= d.qs.length) {
       if (d.p === 0) { d.p = 1; d.state = 'turn'; }
-      else { d.state = 'end'; cfg.stats.duels = (cfg.stats.duels || 0) + 1; saveCfg(); confetti(); celebrate(); }
+      else { d.state = 'end'; cfg.stats.duels = (cfg.stats.duels || 0) + 1; if (d.qs.length === 10 && Math.min(...d.scores) === 0 && Math.max(...d.scores) === 10) award('fair-play'); saveCfg(); confetti(); celebrate(); }
       document.activeElement?.blur?.();
       render(); return;
     }
@@ -838,7 +1102,8 @@ function renderHeader() {
   const st = streakNow(), g = goalOf(), tc = todayCount();
   const flame = '<svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M7 0c1 3 5 5 5 9.5A5 5 0 0 1 2 9.5C2 7 4 6 4 4c1.5 1 2 2.5 2 3.5C7.5 6 7.5 3 7 0z" fill="var(--accent)"/></svg>';
   $('#sStreak').innerHTML = `${ring(tc / g, 20, 3.5)}<span><b>${Math.min(tc, g)}/${g}</b> aujourd'hui</span><span class="sep">·</span>${flame}<span>${st ? `<b>${plural(st, 'jour', 'jours')}</b> d'affilée` : 'série à lancer'}</span>`;
-  $('#sBest').textContent = 'points · ' + titleOf(sc);
+  const lb = cfg.lastBadge;
+  $('#sBest').innerHTML = 'points · ' + esc(titleOf(sc)) + (lb ? `<img class="hbadge" src="badge-${esc(lb.img)}.webp" alt="">` : '');
   const counts = INTER.map((_, i) => all.filter(w => w.lvl === i).length);
   const max = Math.max(1, ...counts);
   const crown = '<svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><path d="M1 11 2 2l4.5 4L9 0l2.5 6L16 2l1 9z" fill="var(--accent)"/></svg>';
@@ -989,20 +1254,25 @@ function renderProg() {
     const k = ymd(d), n = days[k] || 0, dg = dayGoal(k), lv = !n ? 0 : n < dg / 2 ? 1 : n < dg ? 2 : 3;
     cells += `<i class="c l${lv}" style="--gc:${GOAL_COL[dg] || GOAL_COL[20]}" title="${d.toLocaleDateString('fr-FR')} : ${n} / ${dg}"></i>`;
   }
- const vals = achValues();
-  const medal = t => `<svg width="34" height="40" viewBox="0 0 34 40" aria-hidden="true"><path d="M9 0h6l4 12h-6zM25 0h-6l-4 12h6z" fill="${t ? 'var(--btn)' : 'var(--line)'}"/><circle cx="17" cy="25" r="13" fill="${t ? TIER_COL[t - 1] : 'var(--soft)'}" stroke="${t ? 'var(--btn)' : 'var(--line)'}" stroke-width="2.5"/><path d="m17 18 2.2 4.5 5 .7-3.6 3.5.8 5-4.4-2.3-4.4 2.3.8-5-3.6-3.5 5-.7z" fill="${t ? '#fff' : 'var(--line)'}"/></svg>`;
+  const vals = achValues();
   const nGot = ACH.reduce((n, a) => n + tierOf(a, vals[a.id]), 0);
   const achCard = a => {
     const v = vals[a.id], t = tierOf(a, v), nx = a.steps[t];
     const from = t ? a.steps[t - 1] : 0;
-    const pic = a.img ? `<img class="bimg${t ? '' : ' locked'}" src="badge-${a.img}-${Math.max(1, t)}.webp" alt="" loading="lazy">` : medal(t);
-    return `<div class="badge${t ? ' on' : ''}${t === a.steps.length && a.steps.length > 5 ? ' legend' : ''}">${pic}<b>${t ? esc(a.names[t - 1]) : esc(a.label)}</b><span>${t ? esc(a.label) : `${a.steps[0]} ${esc(a.unit)}`}</span>
-      <div class="pips">${a.steps.map((_, i) => `<i style="${i < t ? `background:${TIER_COL[i]}` : ''}"></i>`).join('')}</div>
+    const pic = `<button class="bpic" data-a="bview" data-k="${a.id}" data-t="${Math.max(1, t)}" aria-label="Voir le badge"><img class="bimg${t ? '' : ' locked'}" src="badge-${a.img}-${Math.max(1, t)}.webp" alt="" loading="lazy"></button>`;
+    const minis = `<div class="minis">${a.steps.map((_, i) => `<button data-a="bview" data-k="${a.id}" data-t="${i + 1}" aria-label="${esc(i < t ? a.names[i] : 'Niveau ' + (i + 1))}"${i + 1 === t ? ' aria-current="true"' : ''}><img class="${i < t ? '' : 'locked'}" src="badge-${a.img}-${i + 1}.webp" alt="" loading="lazy"></button>`).join('')}</div>`;
+    return `<div class="badge${t ? ' on' : ''}${t === a.steps.length ? ' maxed' : ''}">${pic}<b>${t ? esc(a.names[t - 1]) : esc(a.label)}</b><span>${t ? esc(a.label) : `${fmt(a.steps[0])} ${esc(a.unit)}`}</span>
+      ${minis}
       ${nx ? `<div class="bar3"><i style="width:${Math.min(100, Math.round((v - from) / (nx - from) * 100))}%"></i></div><span>${fmt(Math.min(v, nx))} / ${fmt(nx)} pour <b>${esc(a.names[t])}</b></span>` : '<span><b>Niveau maximum !</b></span>'}</div>`;
   };
+  const sec = cfg.secrets || {}, nSec = SECRETS.filter(x => sec[x[0]]).length;
+  const secGrid = SECRETS.map(([id, name]) => sec[id] ? `<button class="on" data-a="bview" data-k="secret" data-t="${id}" aria-label="${esc(name)}"><img src="badge-secret-${id}.webp" alt="" loading="lazy"></button>` : `<button data-a="bview" data-k="secret" data-t="${id}" aria-label="Badge secret">?</button>`).join('');
+  const lb = cfg.lastBadge;
+  const last = lb ? `<button class="lastb" data-a="bview" data-k="last"><img src="badge-${esc(lb.img)}.webp" alt=""><span>Dernier badge gagné<b>${esc(lb.name)}</b></span></button>` : '';
+  const topMsg = nt ? `encore ${fmt(nt[0] - sc)} points pour devenir <b>${esc(nt[1])}</b>` : sc >= 20000 ? 'Titre secret débloqué. Bienvenue chez les immortels !' : 'Tu as atteint le plus haut titre… officiel.';
   return `<section class="prog">
-    <div class="ptitle"><div><span class="note">Ton titre</span><b class="tname">${esc(titleOf(sc))}</b><span class="note">${nt ? `encore ${fmt(nt[0] - sc)} points pour devenir <b>${esc(nt[1])}</b>` : 'Tu as atteint le titre le plus haut !'}</span></div>
-      ${nt ? `<div class="bar2"><i style="width:${Math.round((sc - prevT[0]) / (nt[0] - prevT[0]) * 100)}%"></i></div>` : ''}</div>
+    <div class="ptitle"><div><span class="note">Ton titre</span><b class="tname">${esc(titleOf(sc))}</b><span class="note">${topMsg}</span></div>
+      ${nt ? `<div class="bar2"><i style="width:${Math.round((sc - prevT[0]) / (nt[0] - prevT[0]) * 100)}%"></i></div>` : ''}${last}</div>
     <div class="pgoal">${ring(tc / g, 96, 10, 'var(--btn)')}<div><b class="big2">${Math.min(tc, g)} / ${g}</b><p style="margin:2px 0 8px">${tc >= g ? 'Défi du jour réussi !' : `bonnes réponses aujourd'hui, encore ${g - tc} pour réussir le défi`}</p>
       <div class="fl"><span>Objectif</span>${[10, 20, 30, 50].map(v => `<button class="chip gchip" data-a="goal" data-val="${v}" aria-pressed="${g === v}" style="--gc:${GOAL_COL[v]}">${v}</button>`).join('')}</div></div></div>
   </section>
@@ -1016,8 +1286,34 @@ function renderProg() {
     <div class="recs"><div><b>${S.sprintBest || 0}</b><span>meilleur sprint</span></div><div><b>${S.bestCombo || 0}</b><span>meilleure série de bonnes réponses</span></div><div><b>${S.bossWins || 0}</b><span>${(S.bossWins || 0) > 1 ? 'boss battus' : 'boss battu'}</span></div><div><b>${fmt(S.bestScore || 0)}</b><span>meilleur score</span></div></div>
   </section>
   <section><h2>Succès <span class="note">${nGot}/${ACH.reduce((n, a) => n + a.steps.length, 0)}</span></h2>
+    <p class="note" style="margin-top:0">Touche un badge pour le voir en grand.</p>
     <div class="badges">${ACH.map(achCard).join('')}</div>
-  </section>`;
+  </section>
+  <section><h2>Badges secrets <span class="note">${nSec}/${SECRETS.length}</span></h2>
+    <p class="note" style="margin-top:0">Ils se débloquent en faisant des choses inattendues. À toi de les trouver !</p>
+    <div class="secrets">${secGrid}</div>
+  </section>${renderBview()}`;
+}
+// big view of one badge (family tier, secret, or the last one won)
+function renderBview() {
+  const bv = ui.bview;
+  if (!bv) return '';
+  let img = '', name = '', sub = '', info = '', locked = false, q = false;
+  const when = t => t ? 'Obtenu le ' + new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  let k = bv.k, t = bv.t;
+  if (k === 'last') { const lb = cfg.lastBadge; if (!lb) return ''; const m = lb.img.match(/^secret-(.+)$/); if (m) { k = 'secret'; t = m[1]; } else { const a = ACH.find(x => lb.img.startsWith(x.img + '-')); if (!a) return ''; k = a.id; t = Number(lb.img.split('-').pop()); } }
+  if (k === 'secret') {
+    const x = secretOf(t), got = (cfg.secrets || {})[t];
+    if (!x) return '';
+    if (got) { img = 'secret-' + t; name = x[1]; sub = 'Badge secret'; info = `<p>${esc(x[2])}</p><p>${when(got)}</p>`; }
+    else { q = true; name = 'Badge secret'; info = '<p>Celui-là se cache encore. Continue de réviser, tu finiras par tomber dessus.</p>'; }
+  } else {
+    const a = ACH.find(x => x.id === k); if (!a) return '';
+    const v = achValues()[a.id], cur = tierOf(a, v); t = Number(t);
+    locked = t > cur; img = a.img + '-' + t; name = locked ? 'Niveau ' + t + ' · ' + a.names[t - 1] : a.names[t - 1]; sub = a.label;
+    info = `<p>${fmt(a.steps[t - 1])} ${esc(a.unit)}</p>${a.hint ? `<p>${esc(a.hint)}</p>` : ''}<p>${locked ? `Encore ${fmt(a.steps[t - 1] - v)} pour l'obtenir.` : (when((cfg.tierDates || {})[a.id + '-' + t]) || 'Obtenu')}</p>`;
+  }
+  return `<div class="bview" data-a="bclose"><div>${q ? '<div class="q">?</div>' : `<img class="${locked ? 'locked' : ''}" src="badge-${img}.webp" alt="">`}<b class="big2">${esc(name)}</b>${sub ? `<p>${esc(sub)}</p>` : ''}${info}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
 }
 function renderHelp() {
   const arrowR = c => `<svg width="120" height="22" viewBox="0 0 120 22" aria-hidden="true"><path d="M4 11h104" stroke="${c}" stroke-width="3" stroke-linecap="round"/><path d="M104 4l10 7-10 7" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -1078,7 +1374,7 @@ function render(fromSnap) {
   const banner = !ui.newVersion ? '' : ui.updFailed
     ? `<div class="upd"><span>La version ${esc(ui.newVersion)} ne s'installe pas : sur GitHub, <b>app.js</b> ou <b>style.css</b> n'ont pas été remplacés (version installée : ${APP_VERSION}). Renvoie tous les fichiers, attends la coche verte, puis réessaie.</span><button class="btn small" data-a="update">Réessayer</button></div>`
     : `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>`;
-  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : renderSet());
+  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : renderSet());
   if (view === 'rev') {
     const a = $('#ans');
     const card = document.querySelector('.card');
@@ -1100,7 +1396,7 @@ function toast(t, undo) {
 $('#toastB').addEventListener('click', () => { toastUndo?.(); $('#toast').style.display = 'none'; });
 
 /* ---------- events ---------- */
-const go = v => { view = v; ui.openId = null; ui.editLib = null; ui.confirm = null; ui.newLib = false; ui.addNew = false; ui.restore = null; ui.backupText = ''; if (v === 'rev') startSessionIfNeeded(); render(); };
+const go = v => { view = v; ui.bview = null; ui.beastView = null; if (v !== 'rev') stopBossTimer(); ui.openId = null; ui.editLib = null; ui.confirm = null; ui.newLib = false; ui.addNew = false; ui.restore = null; ui.backupText = ''; if (v === 'rev') startSessionIfNeeded(); render(); };
 document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.v); });
 $('#gear').addEventListener('click', () => go(view === 'set' ? 'rev' : 'set'));
 $('#score').addEventListener('click', () => go(view === 'help' ? 'rev' : 'help'));
@@ -1120,6 +1416,7 @@ $('#main').addEventListener('submit', e => {
     toast(r.added ? `« ${t[0]} » ajouté` : `« ${t[0]} » existait déjà : traductions fusionnées`);
     $('#a-t').value = ''; $('#a-fr').value = ''; $('#a-t').focus(); renderHeader();
     if (!session || session.state === 'done') restartSession();
+    celebrate();
   }
   if (f.id === 'at') {
     const name = $('#at-n').value.trim(); if (!name) { toast('Donne un nom au thème.'); return; }
@@ -1171,14 +1468,20 @@ $('#main').addEventListener('click', e => {
   if (a === 'extra') { session = newSession(true); next(); render(); }
   if (a === 'goadd') go('add');
   if (a === 'gorev') go('rev');
-  if (a === 'mode') { stopSprint(); ui.mode = b.dataset.k; ui.sprint = null; ui.boss = null; ui.duel = null; if (ui.mode === 'rev') startSessionIfNeeded(); render(); }
+  if (a === 'mode') { stopSprint(); stopBossTimer(); ui.mode = b.dataset.k; ui.sprint = null; ui.boss = null; ui.duel = null; if (ui.mode === 'rev') startSessionIfNeeded(); render(); }
   if (a === 'sprintgo') sprintStart();
   if (a === 'bossgo') bossStart();
+  if (a === 'bossfight') bossFight();
+  if (a === 'bestiary') go('best');
+  if (a === 'bestback') { go('rev'); }
+  if (a === 'beast') { ui.beastView = b.dataset.k; render(); }
   if (a === 'duelgo') duelStart();
   if (a === 'duelplay') duelPlay();
   if (a === 'duelsetup') { ui.duel = { state: 'setup' }; render(); }
   if (a === 'goal') { cfg.stats.goal = Number(b.dataset.val); cfg.stats.goals = { ...(cfg.stats.goals || {}), [ymd(Date.now())]: cfg.stats.goal }; if (todayCount() >= cfg.stats.goal && (cfg.stats.days || {})[ymd(Date.now())]) ui.goalDone = false; saveCfg(); render(); celebrate(); }
   if (a === 'party') { ui.celebrate = false; render(); }
+  if (a === 'bview') { ui.bview = { k: b.dataset.k, t: b.dataset.t }; render(); }
+  if (a === 'bclose' && (e.target === b || e.target.closest('button[data-a="bclose"]'))) { ui.bview = null; ui.beastView = null; render(); }
   if (a === 'golang') { go('set'); document.getElementById('langs')?.scrollIntoView(); }
   if (a === 'starter') { ui.importText = STARTER; render(); }
   if (a === 'tog') {
