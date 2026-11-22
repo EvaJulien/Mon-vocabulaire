@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.3.0';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -241,7 +241,7 @@ function remoteBackend(db, id) {
     });
     words = m;
     applyTheme();
-    if (first) { first = false; startSessionIfNeeded(); firstRun(); }
+    if (first) { first = false; startSessionIfNeeded(); installCheck(); firstRun(); }
     render(true);
   }, () => { clearTimeout(timer); setStatus('Mots indisponibles pour le moment.'); });
   return {
@@ -286,7 +286,7 @@ async function boot() {
   else {
     backend = localBackend();
     setStatus(framed ? 'Mode hors ligne : les mots restent sur cet appareil.' : '');
-    applyTheme(); startSessionIfNeeded(); checkBadges(); firstRun(); render();
+    applyTheme(); startSessionIfNeeded(); checkBadges(); installCheck(); firstRun(); render();
     checkUpdate(false);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
   }
@@ -901,7 +901,7 @@ const BEASTS = [
     story: 'Dans les villages des Carpates, le strigoï est un mort qui ne trouve pas le repos. La nuit, il sort de sa tombe pour hanter ses anciens voisins et voler leur force vitale. Pour s\'en protéger, on accrochait de l\'ail aux fenêtres et on laissait des graines de pavot devant la porte : il était obligé de les compter jusqu\'à l\'aube.',
     fact: 'Ces légendes roumaines ont inspiré l\'écrivain Bram Stoker pour son roman Dracula.',
     tip: 'Il ne sort que la nuit, et chaque erreur le nourrit : le mot raté revient.' },
-  { id: 'loupgarou', name: 'Loup-garou', from: 'Europe', reg: 'Europe', rar: 'Nocturne', cond: 'fullmoon', rules: ['colossus', 'chrono'], mode: 'both',
+  { id: 'loupgarou', name: 'Loup-garou', from: 'Europe', reg: 'Europe', rar: 'Nocturne', cond: 'fullmoon', rules: ['colossus', 'regen'], mode: 'both',
     story: 'Le jour, c\'est un homme ordinaire. Mais les nuits de pleine lune, son corps se tord, ses os craquent et il devient une bête énorme et affamée. Dans la France d\'autrefois, on craignait les « garous » qui couraient la campagne. On disait que seule une balle d\'argent pouvait en venir à bout.',
     fact: 'La peur des loups-garous a donné lieu à de vrais procès en France aux XVIe et XVIIe siècles.',
     tip: 'Seulement les soirs de pleine lune : un colosse rapide. Une vraie épreuve d\'endurance.' },
@@ -925,7 +925,7 @@ const BEASTS = [
     story: 'Les marins norvégiens redoutaient le kraken, un monstre des abysses si gigantesque qu\'on le prenait pour une île. Quand il remontait à la surface, il entraînait les navires dans un tourbillon. Certains capitaines auraient même jeté l\'ancre sur son dos sans le savoir.',
     fact: 'Le calmar géant, qui a sans doute inspiré la légende, n\'a été filmé vivant pour la première fois qu\'en 2004.',
     tip: 'Une rencontre très rare. Colosse et hydre à la fois : le combat le plus long de la mer.' },
-  { id: 'dragon', name: 'Dragon', from: 'Partout dans le monde', reg: 'Monde entier', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'chrono'], mode: 'both',
+  { id: 'dragon', name: 'Dragon', from: 'Partout dans le monde', reg: 'Monde entier', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'rush', 'regen'], mode: 'both',
     story: 'De la Chine à l\'Europe, presque toutes les cultures ont leur dragon. En Occident, il crache le feu, garde des trésors et affronte les chevaliers. En Asie, il est sage, maître des pluies et des rivières. Partout, il est le plus puissant des êtres, celui qu\'aucun chasseur n\'oublie jamais.',
     fact: 'Le mot vient du grec drakôn, « serpent », de la même racine que « voir clairement » : le dragon est celui qui voit tout.',
     tip: 'Le plus rare de tous. 20 mots, 10 secondes chacun : il faudra être au sommet.' },
@@ -973,7 +973,7 @@ const BEASTS = [
     story: 'Tête, ailes et serres d\'aigle, corps de lion : le griffon réunit le roi des oiseaux et le roi des animaux. Les anciens racontaient qu\'il gardait des mines d\'or dans les montagnes d\'Asie et attaquait sans pitié quiconque s\'en approchait. Au Moyen Âge, il devint un symbole de force et de vigilance.',
     fact: 'Certains historiens pensent que des fossiles de dinosaures trouvés dans le désert de Gobi ont inspiré la légende.',
     tip: 'Rapide comme l\'aigle : 10 secondes par mot.' },
-  { id: 'tarasque', name: 'Tarasque', from: 'Provence', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['colossus'], mode: 'both',
+  { id: 'tarasque', name: 'Tarasque', from: 'Provence', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['colossus', 'regen'], mode: 'both',
     story: 'Au bord du Rhône, près de Tarascon, vivait la Tarasque : une tête de lion, une carapace de tortue hérissée de piques, six pattes et une queue de scorpion. Elle dévorait bêtes et voyageurs. Sainte Marthe la dompta avec de l\'eau bénite et une simple ceinture, avant de la ramener en ville comme un animal docile.',
     fact: 'Chaque dernier week-end de juin, les fêtes de la Tarasque font défiler une Tarasque géante dans les rues de Tarascon.',
     tip: 'Un monstre de chez toi, solide comme un colosse.' },
@@ -1005,11 +1005,11 @@ const BEASTS = [
     story: 'Dans les rivières et les lacs slaves vivent les roussalki, des esprits d\'eau aux longs cheveux verts. Les nuits d\'été, elles chantent et dansent au clair de lune sur les rives. Leur chant est si beau que les voyageurs s\'approchent… et finissent entraînés sous l\'eau.',
     fact: 'Le compositeur Dvořák en a fait un opéra, Rusalka, dont le « Chant à la lune » est très célèbre.',
     tip: 'Elle attire par sa voix : à l\'ouïe, la nuit, avec une seule vie.' },
-  { id: 'fenrir', name: 'Fenrir', from: 'Scandinavie', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'chrono'], mode: 'both',
+  { id: 'fenrir', name: 'Fenrir', from: 'Scandinavie', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'rush'], mode: 'both',
     story: 'Fenrir, fils du dieu Loki, grandissait si vite que les dieux eux-mêmes en eurent peur. Ils l\'enchaînèrent avec Gleipnir, un lien magique fait du bruit des pas d\'un chat, de la barbe d\'une femme et du souffle d\'un poisson. Le dieu Týr y perdit sa main. À la fin du monde, le Ragnarök, Fenrir brisera ses chaînes.',
     fact: 'Le mardi s\'appelle « Tuesday » en anglais : le jour de Týr, le dieu manchot.',
     tip: 'Très rare. Un colosse rapide : il faudra tenir les 20 mots, 10 secondes chacun.' },
-  { id: 'garuda', name: 'Garuda', from: 'Inde', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'both',
+  { id: 'garuda', name: 'Garuda', from: 'Inde', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['rush'], mode: 'both',
     story: 'Garuda est le roi des oiseaux, à la tête d\'aigle et au corps d\'homme doré. Il est la monture du dieu Vishnou. Pour libérer sa mère, il vola aux dieux l\'amrita, le nectar d\'immortalité, et repoussa à lui seul toute leur armée. Il est l\'ennemi juré des serpents, les nagas.',
     fact: 'La compagnie aérienne nationale d\'Indonésie s\'appelle Garuda, et il figure sur les armoiries du pays.',
     tip: 'Rapide comme le vent : 10 secondes par mot.' },
@@ -1017,7 +1017,7 @@ const BEASTS = [
     story: 'Les nagas sont des serpents divins à plusieurs têtes, gardiens des eaux, des trésors et des temples. Le plus célèbre, Mucalinda, déploya ses sept têtes au-dessus du Bouddha pour le protéger d\'une tempête pendant qu\'il méditait. Ils peuvent être protecteurs… ou terribles quand on les offense.',
     fact: 'Au Cambodge, les balustrades du temple d\'Angkor Vat sont de longs nagas sculptés.',
     tip: 'Plusieurs têtes, comme l\'Hydre : chaque erreur ajoute un mot.' },
-  { id: 'quetzalcoatl', name: 'Quetzalcoatl', from: 'Mexique', reg: 'Amériques', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'trick'], mode: 'both',
+  { id: 'quetzalcoatl', name: 'Quetzalcoatl', from: 'Mexique', reg: 'Amériques', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'regen'], mode: 'both',
     story: 'Quetzalcoatl, le serpent à plumes, est l\'un des plus grands dieux des Aztèques et des Mayas. Il aurait donné aux hommes le maïs, le calendrier et l\'écriture. Selon la légende, il partit un jour vers l\'est sur un radeau de serpents, en promettant de revenir.',
     fact: 'À Chichén Itzá, au Mexique, l\'ombre du soleil dessine un serpent qui descend l\'escalier de la pyramide aux équinoxes.',
     tip: 'Très rare. Long et trompeur : 20 mots, avec une langue qui change.' },
@@ -1045,7 +1045,7 @@ const BEASTS = [
     story: 'Le Simurgh est un oiseau immense et très ancien, qui a vu le monde se détruire trois fois. Il vit au sommet du mont Qaf et connaît tous les secrets. Dans le Livre des Rois, il recueille le héros Zal abandonné bébé, l\'élève dans son nid et lui donne trois plumes pour l\'appeler en cas de danger.',
     fact: 'Dans le poème La Conférence des oiseaux, trente oiseaux partent à sa recherche, et découvrent que « si-morgh » signifie « trente oiseaux ».',
     tip: 'Très rare. Rapide et exigeant : 10 secondes par mot, sans aucune faute.' },
-  { id: 'bulgasari', name: 'Bulgasari', from: 'Corée', reg: 'Asie', rar: 'Rare', cond: 'korean', rules: ['colossus'], mode: 'both',
+  { id: 'bulgasari', name: 'Bulgasari', from: 'Corée', reg: 'Asie', rar: 'Rare', cond: 'korean', rules: ['colossus', 'regen'], mode: 'both',
     story: 'Un moine sculpta un jour une petite créature avec des grains de riz. Elle se mit à manger des aiguilles, puis des cuillères, puis tout le fer du royaume, et devint gigantesque. On l\'appela Bulgasari, « celui qu\'on ne peut pas tuer », car ni les flèches ni le feu ne pouvaient l\'arrêter.',
     fact: 'Un film de monstre nord-coréen de 1985, Pulgasari, a raconté son histoire.',
     tip: 'Il n\'apparaît que si tu révises le coréen : un colosse de fer.' },
@@ -1089,11 +1089,11 @@ const BEASTS = [
     story: 'Les rakshasas sont des démons de la mythologie hindoue, capables de changer d\'apparence à volonté. Leur roi, Ravana, aux dix têtes, enleva la princesse Sita. Le prince Rama, aidé du dieu-singe Hanuman et d\'une armée de singes, construisit un pont jusqu\'à l\'île de Lanka pour la délivrer.',
     fact: 'Chaque année en Inde, lors de la fête de Dussehra, on brûle d\'immenses effigies de Ravana.',
     tip: 'Rusé et précis : aucune faute ne sera pardonnée.' },
-  { id: 'thunderbird', name: 'Thunderbird', from: 'Amérique du Nord', reg: 'Amériques', rar: 'Saisonnier', cond: 'summer', rules: ['chrono'], mode: 'e',
+  { id: 'thunderbird', name: 'Thunderbird', from: 'Amérique du Nord', reg: 'Amériques', rar: 'Saisonnier', cond: 'summer', rules: ['rush'], mode: 'e',
     story: 'Pour de nombreux peuples autochtones d\'Amérique du Nord, l\'oiseau-tonnerre est un être immense et sacré. Le battement de ses ailes fait gronder le tonnerre, et l\'éclair jaillit de ses yeux. Il combat les serpents des profondeurs et apporte la pluie qui nourrit la terre.',
     fact: 'Il est souvent sculpté au sommet des mâts totémiques de la côte nord-ouest du Pacifique.',
     tip: 'On l\'entend avant de le voir : à l\'ouïe, en été, et vite.' },
-  { id: 'raiju', name: 'Raijū', from: 'Japon', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'e',
+  { id: 'raiju', name: 'Raijū', from: 'Japon', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['rush'], mode: 'e',
     story: 'Le raijū, la « bête du tonnerre », accompagne Raijin, le dieu de la foudre. Pendant les orages, il bondit d\'arbre en arbre sous forme d\'éclair et laisse des traces de griffes sur les troncs. Par beau temps, il dort en boule… de préférence dans le nombril des gens.',
     fact: 'C\'est pour ça qu\'au Japon, on conseille aux enfants de cacher leur nombril pendant les orages.',
     tip: 'Le tonnerre s\'écoute : à l\'ouïe uniquement, et à la vitesse de l\'éclair.' },
@@ -1133,7 +1133,7 @@ const BEASTS = [
     story: 'Le pixiu est une bête céleste chinoise, mi-lion mi-dragon, avec une corne et de petites ailes. Il se nourrit d\'or et d\'argent. On raconte qu\'ayant offensé l\'Empereur céleste, il fut puni : il peut tout avaler, mais plus rien ne ressort. C\'est pourquoi il est devenu le gardien des richesses.',
     fact: 'En Chine, de nombreux commerçants posent une statuette de pixiu près de leur caisse, tournée vers la porte.',
     tip: 'Rien ne lui échappe : aucune faute permise.' },
-  { id: 'biche', name: 'Biche de Cérynie', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'both',
+  { id: 'biche', name: 'Biche de Cérynie', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['rush'], mode: 'both',
     story: 'La biche de Cérynie, aux bois d\'or et aux sabots de bronze, était consacrée à la déesse Artémis. Elle courait si vite qu\'aucune flèche ne pouvait l\'atteindre. Pour son troisième travail, Hercule la poursuivit pendant une année entière, jusqu\'au bout du monde, avant de la capturer sans la blesser.',
     fact: 'Les biches n\'ont normalement pas de bois : c\'est ce qui rendait celle-ci si extraordinaire.',
     tip: 'La plus rapide de toutes : 10 secondes par mot.' },
@@ -1179,13 +1179,19 @@ const RULES = {
   hydra: 'Hydre : chaque erreur ajoute un mot.',
   greedy: 'Vorace : chaque erreur lui rend un mot de vie.',
   strict: 'Implacable : aucune faute de frappe tolérée.',
-  trick: 'Trompeur : la langue de réponse change à chaque mot.'
+  trick: 'Trompeur : la langue de réponse change à chaque mot.',
+  rush: 'Contre la montre : tue-le avant la fin du temps.',
+  regen: 'Régénération : s\'il reste trop longtemps sans être touché, il récupère un mot de vie.'
 };
 const REGIONS = ['Europe', 'Asie', 'Amériques', 'Afrique et Moyen-Orient', 'Océanie', 'Monde entier'];
 const RARS = ['Commun', 'Rare', 'Nocturne', 'Saisonnier', 'Légendaire'];
-const RULE_NAMES = { classic: 'Classique · 10 mots, 3 vies', colossus: 'Colosse · 20 mots, 5 vies', fragile: 'Fragile · 1 vie', chrono: 'Chrono · 10 s par mot', hydra: 'Hydre · gagne des mots', greedy: 'Vorace · récupère de la vie', strict: 'Implacable · aucune faute', trick: 'Trompeur · langue qui change' };
+const RULE_NAMES = { classic: 'Classique · 10 mots, 3 vies', colossus: 'Colosse · 20 mots, 5 vies', fragile: 'Fragile · 1 vie', chrono: 'Chrono · 10 s par mot', hydra: 'Hydre · gagne des mots', greedy: 'Vorace · récupère de la vie', strict: 'Implacable · aucune faute', trick: 'Trompeur · langue qui change', rush: 'Contre la montre · temps total', regen: 'Régénération · se soigne' };
 const RAR_COL = { Commun: '#6b7f72', Rare: '#3b82f6', Nocturne: '#6d3fb0', Saisonnier: '#d97706', Légendaire: '#b91c1c' };
 const BOSS_MIN = 20, CHRONO_S = 10;
+// rush: total time to kill it, counted only while a question is on screen; a bit more at the ouïe (listening takes time)
+// regen: one word of life back after this many seconds without a correct answer (at most REGEN_MAX times)
+const RUSH_PER = { w: 4.5, e: 6.5 }, REGEN_S = { w: 8, e: 11 }, REGEN_MAX = 8;
+const timedRules = r => r.some(x => x === 'chrono' || x === 'rush' || x === 'regen');
 const beast = id => BEASTS.find(x => x.id === id);
 // moon age in days (0 = new moon, ~14.8 = full moon), from a known new moon
 const moonAge = t => { const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14); return (((t - ref) / DAY) % syn + syn) % syn; };
@@ -1241,12 +1247,34 @@ let bossTimer = null;
 function stopBossTimer() { clearInterval(bossTimer); bossTimer = null; }
 function bossTick() {
   const b = ui.boss;
-  if (!b || b.state !== 'run' || !b.rules.includes('chrono') || view !== 'hunt') return stopBossTimer();
+  if (!b || b.state !== 'run' || !timedRules(b.rules) || view !== 'hunt') return stopBossTimer();
   if (b.phase !== 'ask') return;
-  const left = Math.max(0, (b.deadline - Date.now()) / 1000), t = $('#btime'), bar = $('#tbar');
-  if (t) t.textContent = Math.ceil(left);
-  if (bar) { bar.style.width = (left / CHRONO_S * 100) + '%'; bar.classList.toggle('low', left <= 3); }
-  if (left <= 0) bossAnswer('', true);
+  const now = Date.now(), cur = now - (b.askStart || now);
+  if (b.rules.includes('rush')) {
+    const rl = Math.max(0, (b.rushMs - b.askMs - cur) / 1000), t = $('#brush'), bar = $('#rbar');
+    if (t) t.textContent = Math.ceil(rl);
+    if (bar) { bar.style.width = (rl * 1000 / b.rushMs * 100) + '%'; bar.classList.toggle('low', rl <= 10); }
+    if (rl <= 0) { b.askMs += cur; b.timeUp = true; return bossEnd(false); }
+  }
+  if (b.rules.includes('regen') && b.regens < REGEN_MAX) {
+    const per = REGEN_S[ui.huntTrack || 'w'] * 1000, gl = per - b.sinceHit - cur, el = $('#bregen');
+    if (el) el.textContent = `Se régénère dans ${Math.max(0, Math.ceil(gl / 1000))} s`;
+    if (gl <= 0) {
+      b.sinceHit -= per; b.regens++;
+      const back = b.spare.length ? b.spare.shift() : b.ids[Math.floor(Math.random() * Math.max(1, b.i))];
+      b.ids.push(back);
+      const hp = $('.hp'); if (hp) hp.insertAdjacentHTML('beforeend', '<i class="new"></i>');
+      const c = $('#bcount'); if (c) c.textContent = b.ids.length;
+      const a = $('.arena .beast'); if (a) { a.classList.remove('heal'); void a.offsetWidth; a.classList.add('heal'); }
+      if (el && b.regens >= REGEN_MAX) el.textContent = 'Il ne peut plus se régénérer';
+    }
+  }
+  if (b.rules.includes('chrono')) {
+    const left = Math.max(0, (b.deadline - now) / 1000), t = $('#btime'), bar = $('#tbar');
+    if (t) t.textContent = Math.ceil(left);
+    if (bar) { bar.style.width = (left / CHRONO_S * 100) + '%'; bar.classList.toggle('low', left <= 3); }
+    if (left <= 0) bossAnswer('', true);
+  }
 }
 function bossStart() {
   const be = drawBeast();
@@ -1255,7 +1283,7 @@ function bossStart() {
   const pool = bossPool(n);
   if (pool.total < BOSS_MIN) { toast(`Il faut au moins ${BOSS_MIN} mots dans ta sélection pour partir en chasse.`); return; }
   const lives = rules.includes('fragile') ? 1 : rules.includes('colossus') ? 5 : 3;
-  ui.boss = { state: 'intro', beast: be.id, rules, ids: pool.pick.map(w => w.id), spare: pool.spare.map(w => w.id), i: 0, lives, maxLives: lives, hits: 0, phase: 'ask' };
+  ui.boss = { state: 'intro', beast: be.id, rules, ids: pool.pick.map(w => w.id), spare: pool.spare.map(w => w.id), i: 0, lives, maxLives: lives, hits: 0, phase: 'ask', askMs: 0, sinceHit: 0, regens: 0, rushMs: Math.round(n * RUSH_PER[ui.huntTrack || 'w'] * 1000) };
   // the creature that fled is only kept away for this one hunt
   cfg.stats.fled = null;
   const bs = { ...(cfg.beasts || {}) }; bs[be.id] = { ...(bs[be.id] || {}), seen: bs[be.id]?.seen || Date.now() }; cfg.beasts = bs; saveCfg();
@@ -1264,8 +1292,8 @@ function bossStart() {
 }
 function bossFight() {
   const b = ui.boss;
-  b.state = 'run'; b.cur = bossQ(); ui.toCard = true;
-  stopBossTimer(); if (b.rules.includes('chrono')) bossTimer = setInterval(bossTick, 200);
+  b.state = 'run'; b.cur = bossQ(); b.askStart = Date.now(); ui.toCard = true;
+  stopBossTimer(); if (timedRules(b.rules)) bossTimer = setInterval(bossTick, 200);
   render();
 }
 function bossEnd(win) {
@@ -1301,13 +1329,15 @@ function bossAnswer(val, timeout) {
     if (b.i >= b.ids.length) return bossEnd(true);
     b.cur = bossQ();
     if (!b.cur) return bossEnd(true);
-    b.phase = 'ask'; ui.toCard = true; render(); return;
+    b.phase = 'ask'; b.askStart = Date.now(); ui.toCard = true; render(); return;
   }
   if (!timeout && !val.trim()) return;
+  const spent = Date.now() - (b.askStart || Date.now());
+  b.askMs = (b.askMs || 0) + spent; b.sinceHit = (b.sinceHit || 0) + spent;
   const q = b.cur, w = words.get(q.id);
   const ok = !timeout && (b.rules.includes('strict') ? q.answers.flatMap(variants).some(t => normT(t, q.al) === normT(val, q.al)) : check(val, q));
   q.given = timeout ? '' : val; q.ok = ok; q.timeout = !!timeout;
-  if (ok) b.hits++;
+  if (ok) { b.hits++; b.sinceHit = 0; }
   else {
     b.lives--;
     // hydra: a new head (one more word); greedy: the missed word comes back at the end
@@ -1345,16 +1375,21 @@ function renderBoss() {
     return `<div class="card done game beastcard">${beastImg(be, 'beast big appear')}<p class="hint" style="margin:0">Une créature apparaît !</p><b class="big">${esc(be.name)}</b><p style="margin:0">${rarChip(be)} <span class="hint">${esc(be.from)}</span></p>${known ? '<p class="hint">Déjà dans ton bestiaire.</p>' : '<p class="hint"><b>Nouvelle créature !</b></p>'}<div class="rules">${b.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><div class="row center"><button class="btn" data-a="bossfight">Combattre</button></div></div>`;
   }
   if (b.state === 'end') {
-    const msg = b.win ? `${b.newBeast ? `<b>${esc(be.name)}</b> rejoint ton bestiaire !` : `Encore une victoire contre ${esc(be.name)}.`} ${plural(b.hits, 'bonne réponse', 'bonnes réponses')}${b.maxLives > 1 ? `, ${plural(b.lives, 'vie restante', 'vies restantes')}` : ''}.` : `${esc(be.name)} s'est enfui. Tu ne le recroiseras pas au prochain combat. Les mots ratés sont repassés en case Nouv. : révise-les avant de repartir en chasse.`;
+    const msg = b.win ? `${b.newBeast ? `<b>${esc(be.name)}</b> rejoint ton bestiaire !` : `Encore une victoire contre ${esc(be.name)}.`} ${plural(b.hits, 'bonne réponse', 'bonnes réponses')}${b.maxLives > 1 ? `, ${plural(b.lives, 'vie restante', 'vies restantes')}` : ''}.` : `${b.timeUp ? 'Temps écoulé ! ' : ''}${esc(be.name)} s'est enfui. Tu ne le recroiseras pas au prochain combat. Les mots ratés sont repassés en case Nouv. : révise-les avant de repartir en chasse.`;
     return `<div class="card done game beastcard">${beastImg(be, 'beast big' + (b.win ? ' beaten' : ' flee'))}<b class="big">${b.win ? esc(be.name) + ' vaincu !' : 'Il s\'est enfui…'}</b><p>${msg}</p><div class="row center"><button class="btn" data-a="bossgo">Repartir en chasse</button>${bestBtn}</div></div>`;
   }
   const q = b.cur, n = b.ids.length, res = b.phase === 'res', chrono = b.rules.includes('chrono');
   const hp = `<div class="hp" aria-label="Vie de la créature">${b.ids.map((_, i) => `<i class="${i < b.i + (res && q.ok ? 1 : 0) ? 'gone' : ''}"></i>`).join('')}</div>`;
   const left = chrono ? Math.max(0, Math.ceil((b.deadline - Date.now()) / 1000)) : 0;
-  if (chrono && !res && !bossTimer) bossTimer = setInterval(bossTick, 200);
+  if (timedRules(b.rules) && !res && !bossTimer) bossTimer = setInterval(bossTick, 200);
+  const rush = b.rules.includes('rush'), regen = b.rules.includes('regen');
+  const rl = rush ? Math.max(0, b.rushMs - b.askMs - (res ? 0 : Date.now() - b.askStart)) : 0;
+  const rushBox = rush ? `<div class="dir" style="margin-top:8px"><span>Temps pour le vaincre</span><span><b id="brush">${Math.ceil(rl / 1000)}</b> s${res ? ' · en pause' : ''}</span></div><div class="tbar"><i id="rbar" class="${rl <= 10000 ? 'low' : ''}" style="width:${rl / b.rushMs * 100}%"></i></div>` : '';
+  const gl = regen ? REGEN_S[ui.huntTrack || 'w'] * 1000 - b.sinceHit : 0;
+  const regenBox = regen ? `<p class="hint regen" id="bregen">${b.regens >= REGEN_MAX ? 'Il ne peut plus se régénérer' : res ? (q.ok ? 'Touché : sa régénération repart de zéro' : 'Se régénère dans ' + Math.max(0, Math.ceil(gl / 1000)) + ' s') : 'Se régénère dans ' + Math.max(0, Math.ceil(gl / 1000)) + ' s'}</p>` : '';
   return `<div class="card ${res ? (q.ok ? 'ok' : 'ko') : ''}">
-    <div class="arena">${beastImg(be, 'beast mid' + (res && q.ok ? ' hit' : ''))}<div class="arena-top"><b>${esc(be.name)}</b><div class="lives">${hearts(b.lives, b.maxLives)}</div></div>${hp}</div>
-    <div class="dir" style="margin-top:10px"><span class="flag">${esc(flagOf(q))}</span><span>Mot ${b.i + 1}/${n}${chrono && !res ? ` · <b id="btime">${left}</b> s` : ''}</span></div>
+    <div class="arena">${beastImg(be, 'beast mid' + (res && q.ok ? ' hit' : ''))}<div class="arena-top"><b>${esc(be.name)}</b><div class="lives">${hearts(b.lives, b.maxLives)}</div></div>${hp}${regenBox}</div>${rushBox}
+    <div class="dir" style="margin-top:10px"><span class="flag">${esc(flagOf(q))}</span><span>Mot ${b.i + 1}/<span id="bcount">${n}</span>${chrono && !res ? ` · <b id="btime">${left}</b> s` : ''}</span></div>
     ${chrono && !res ? `<div class="tbar"><i id="tbar" style="width:${left / CHRONO_S * 100}%"></i></div>` : ''}
     ${promptBox(q, 'b' + b.i + q.id, res)}
     ${res ? (q.timeout ? `<div class="flash ko">Trop lent ! La réponse était <b>${esc(q.answers.join(' ou '))}</b></div>` : resultBox(q, q.ok)) : ''}
@@ -1403,7 +1438,7 @@ function renderBeastView() {
       <div class="lore"><h4>La légende</h4><p>${esc(be.story)}</p><h4>Le savais-tu ?</h4><p>${esc(be.fact)}</p></div>
       <div class="rules">${be.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><p class="hint">${plural((e.wins || 0) + (e.winsE || 0), 'victoire', 'victoires')} · première le ${date(e.first)}</p>`;
   }
-  return `<div class="bview bb" data-a="bclose"><div>${body}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
+  return `<div class="bview bb" data-a="bclose"><button class="xclose" data-a="bclose" aria-label="Fermer">×</button><div>${body}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
 }
 
 /* duel */
@@ -1724,7 +1759,7 @@ function renderBview() {
     locked = t > cur; img = a.img + '-' + t; name = locked ? 'Niveau ' + t + ' · ???' : a.names[t - 1]; sub = a.label;
     info = `<p>${fmt(a.steps[t - 1])} ${esc(a.unit)}</p>${a.hint ? `<p>${esc(a.hint)}</p>` : ''}<p>${locked ? `Encore ${fmt(a.steps[t - 1] - v)} pour l'obtenir.` : (when((cfg.tierDates || {})[a.id + '-' + t]) || 'Obtenu')}</p>`;
   }
-  return `<div class="bview" data-a="bclose"><div>${q || locked ? '<div class="q">?</div>' : `<img src="badge-${img}.webp" alt="">`}<b class="big2">${esc(name)}</b>${sub ? `<p>${esc(sub)}</p>` : ''}${info}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
+  return `<div class="bview" data-a="bclose"><button class="xclose" data-a="bclose" aria-label="Fermer">×</button><div>${q || locked ? '<div class="q">?</div>' : `<img src="badge-${img}.webp" alt="">`}<b class="big2">${esc(name)}</b>${sub ? `<p>${esc(sub)}</p>` : ''}${info}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
 }
 function renderHelp() {
   const arrowR = c => `<svg width="120" height="22" viewBox="0 0 120 22" aria-hidden="true"><path d="M4 11h104" stroke="${c}" stroke-width="3" stroke-linecap="round"/><path d="M104 4l10 7-10 7" fill="none" stroke="${c}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -1760,7 +1795,7 @@ function renderSet() {
     <h3 style="margin-top:20px">Écoute des mots</h3>
     ${canSpeak() ? `<p class="note" style="margin-top:0">Le bouton haut-parleur lit le mot avec la voix du téléphone. La qualité dépend des voix installées (surtout pour le coréen).</p><div class="fl"><button class="chip" data-a="ttsauto" aria-pressed="${!!cfg.ttsAuto}">Lecture automatique</button>${cfg.langs.map(l => `<button class="chip" data-a="say" data-t="${esc(l.code === 'ko' ? '안녕하세요' : l.code === 'en' ? 'Hello, how are you?' : l.name)}" data-l="${l.id}">Tester : ${esc(l.name)}</button>`).join('')}</div>` : '<p class="note" style="margin-top:0">Ce navigateur ne sait pas lire les mots à voix haute.</p>'}
     <h3 style="margin-top:20px">Présentation</h3>
-    <div class="row"><button class="btn ghost" data-a="welcome">Revoir l'écran d'accueil</button></div>
+    <div class="row"><button class="btn ghost" data-a="welcome">Revoir l'écran d'accueil</button>${!framed && !isStandalone() ? '<button class="btn ghost" data-a="install">Installer sur l\'écran d\'accueil</button>' : ''}</div>
     <h3 style="margin-top:20px">Couleurs du calendrier</h3>
     <p class="note" style="margin-top:0">Une couleur par objectif du défi : 10, 20, 30 et 50.</p>
     <div class="caltheme">${Object.entries(CAL_THEMES).map(([k, [n, c]]) => `<button data-a="caltheme" data-k="${k}" aria-pressed="${(cfg.calTheme || 'feu') === k}"><span>${c.map(x => `<i style="background:${x}"></i>`).join('')}</span>${n}</button>`).join('')}</div>
@@ -1784,6 +1819,7 @@ function renderSet() {
   </section>`;
 }
 function render(fromSnap) {
+  document.body.classList.toggle('noscroll', !!(ui.bview || ui.beastView || ui.install));
   renderHeader();
   const ae = document.activeElement, keep = ae?.id;
   if (fromSnap && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.id !== 'ans') return;
@@ -1792,7 +1828,7 @@ function render(fromSnap) {
   const banner = !ui.newVersion ? '' : ui.updFailed
     ? `<div class="upd"><span>La version ${esc(ui.newVersion)} ne s'installe pas : sur GitHub, <b>app.js</b> ou <b>style.css</b> n'ont pas été remplacés (version installée : ${APP_VERSION}). Renvoie tous les fichiers, attends la coche verte, puis réessaie.</span><button class="btn small" data-a="update">Réessayer</button></div>`
     : `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>`;
-  $('#main').innerHTML = banner + (view === 'rev' || view === 'ear' ? renderRev() : view === 'hunt' ? renderHunt() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : view === 'coll' ? renderColl() : renderSet()) + renderWelcome();
+  $('#main').innerHTML = banner + (view === 'rev' || view === 'ear' ? renderRev() : view === 'hunt' ? renderHunt() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : view === 'coll' ? renderColl() : renderSet()) + (renderInstall() || renderWelcome());
   if (isPlay()) {
     const a = $('#ans');
     const card = document.querySelector('.card');
@@ -1831,11 +1867,40 @@ function autoSay(key, text, langId) {
 
 /* ---------- welcome screen for a new user ---------- */
 const WELCOME = [
-  ['Bienvenue !', 'Mon vocabulaire t\'aide à retenir les mots de tes cours. Commence par ajouter tes mots dans l\'onglet <b>Ajouter</b> : un par un, en collant une liste, ou en demandant une liste toute prête à une IA (l\'appli te prépare la demande).'],
+  ['Bienvenue !', 'Plume &amp; Croc t\'aide à retenir les mots de tes cours. Commence par ajouter tes mots avec le bouton <b>+</b> : un par un, en collant une liste, ou en demandant une liste toute prête à une IA (l\'appli te prépare la demande).'],
   ['Réviser au bon moment', 'Traduis chaque mot en écrivant ta réponse. Juste : le mot monte d\'une case et revient plus tard (1 jour, 3 jours, 1 semaine… jusqu\'à 3 mois). Raté : il revient vite. Plus un mot monte, plus il rapporte de points.'],
   ['Vue, Ouïe et Monstres', 'En <b>Vue</b>, tu lis le mot. En <b>Ouïe</b>, tu l\'entends seulement : réponds dans sa langue (dictée) ou en français (compréhension). Chacun a son Sprint et son Duel. Dans <b>Monstres</b>, bats les créatures du folklore pour remplir ton bestiaire.'],
   ['Progresser', 'Chaque jour, un défi : 10, 20, 30 ou 50 bonnes réponses. Enchaîne les jours, gagne des titres, des badges… et trouve les badges secrets. Touche la ligne du défi en haut pour voir ta progression.']
 ];
+/* ---------- first visit in a browser: how to put the app on the home screen ---------- */
+const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } };
+const platform = () => { const u = navigator.userAgent || ''; if (/iPhone|iPad|iPod/.test(u) || (/Macintosh/.test(u) && navigator.maxTouchPoints > 1)) return /CriOS|FxiOS|EdgiOS/.test(u) ? 'ios-other' : 'ios'; if (/Android/.test(u)) return 'android'; return 'desktop'; };
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (ui.install) render(); });
+window.addEventListener('appinstalled', () => { installEvt = null; ui.install = false; render(); });
+function installCheck() {
+  if (framed || isStandalone()) return;
+  let seen = null; try { seen = localStorage.getItem('vocab-install-seen'); } catch (e) {}
+  if (!seen) ui.install = true;
+}
+const shareIco = '<svg width="20" height="22" viewBox="0 0 20 22" aria-hidden="true" style="vertical-align:-4px"><path d="M10 1v13M5.5 5.5 10 1l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9H3v12h14V9h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+const dotsIco = '<svg width="6" height="20" viewBox="0 0 6 20" aria-hidden="true" style="vertical-align:-4px"><circle cx="3" cy="3" r="2.2" fill="currentColor"/><circle cx="3" cy="10" r="2.2" fill="currentColor"/><circle cx="3" cy="17" r="2.2" fill="currentColor"/></svg>';
+function renderInstall() {
+  if (!ui.install) return '';
+  const pf = platform();
+  const steps = pf === 'ios' ? [`Touche le bouton <b>Partager</b> ${shareIco} en bas de l'écran (en haut sur iPad).`, 'Fais défiler et choisis <b>Sur l\'écran d\'accueil</b>.', 'Touche <b>Ajouter</b> en haut à droite.', 'Ouvre ensuite l\'appli depuis la nouvelle icône.']
+    : pf === 'ios-other' ? ['Sur iPhone, le plus simple est d\'ouvrir ce lien dans <b>Safari</b>.', `Touche alors <b>Partager</b> ${shareIco}, puis <b>Sur l'écran d'accueil</b>.`, 'Touche <b>Ajouter</b>, puis ouvre l\'appli depuis la nouvelle icône.']
+    : pf === 'android' ? [`Touche le menu ${dotsIco} en haut à droite de Chrome.`, 'Choisis <b>Installer l\'application</b> (ou <b>Ajouter à l\'écran d\'accueil</b>).', 'Confirme, puis ouvre l\'appli depuis la nouvelle icône.']
+    : ['Dans Chrome ou Edge, clique sur l\'icône d\'installation à droite de la barre d\'adresse.', 'Confirme avec <b>Installer</b> : l\'appli s\'ouvre dans sa propre fenêtre.', 'Sur téléphone, ouvre ce même lien pour l\'installer aussi.'];
+  return `<div class="bview install"><div>
+    <img src="icon-192.png" alt="" class="appico"><b class="big2">Installe l'appli</b>
+    <p class="ltxt">Mets Plume &amp; Croc sur ton écran d'accueil : elle s'ouvre en plein écran comme une vraie appli, marche sans connexion et garde tes mots sur ton appareil.</p>
+    ${installEvt ? '<div class="row center"><button class="btn" data-a="doinstall">Installer maintenant</button></div><p class="note" style="margin:4px 0 0">Ou à la main :</p>' : ''}
+    <ol class="isteps">${steps.map(t => `<li>${t}</li>`).join('')}</ol>
+    ${pf.startsWith('ios') ? '<p class="note">Important : installe-la <b>avant</b> d\'ajouter tes mots. Sur iPhone, l\'appli installée et Safari ne partagent pas leurs données.</p>' : ''}
+    <div class="row center" style="margin-top:8px"><button class="btn ghost" data-a="noinstall">Continuer dans le navigateur</button></div>
+  </div></div>`;
+}
 function renderWelcome() {
   if (ui.welcome == null) return '';
   const i = ui.welcome, [t, p] = WELCOME[i], last = i === WELCOME.length - 1;
@@ -2043,6 +2108,9 @@ $('#main').addEventListener('click', e => {
   if (a === 'say') { say(b.dataset.t, b.dataset.l, Number(b.dataset.r) || 0); return; }
   if (a === 'ttsauto') { cfg.ttsAuto = !cfg.ttsAuto; saveCfg(); render(); }
   if (a === 'welcome') { ui.welcome = 0; render(); }
+  if (a === 'install') { ui.install = true; render(); }
+  if (a === 'noinstall') { ui.install = false; try { localStorage.setItem('vocab-install-seen', '1'); } catch (e) {} render(); }
+  if (a === 'doinstall' && installEvt) { const ev = installEvt; installEvt = null; ev.prompt(); ev.userChoice.then(r => { if (r.outcome === 'accepted') { ui.install = false; try { localStorage.setItem('vocab-install-seen', '1'); } catch (e) {} } render(); }).catch(() => {}); }
   if (a === 'wnext') { ui.welcome++; render(); }
   if (a === 'wskip') { ui.welcome = null; cfg.welcomed = true; saveCfg(); render(); }
   if (a === 'genshow') { readGen(); ui.gen.show = !ui.gen.show; render(); }
@@ -2087,6 +2155,7 @@ $('#main').addEventListener('change', e => {
   }
 });
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && (ui.bview || ui.beastView)) { ui.bview = null; ui.beastView = null; render(); return; }
   if (e.key === 'Enter' && (view === 'rev' || view === 'ear') && (ui.mode || 'rev') === 'rev' && (session?.state === 'right' || (session?.state === 'wrong' && !mustRetype(session.cur))) && !/BUTTON|INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) { e.preventDefault(); next(); render(); }
 });
 

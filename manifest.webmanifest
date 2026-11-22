@@ -1,6 +1,6 @@
 {
-  "name": "Mon vocabulaire",
-  "short_name": "Vocabulaire",
+  "name": "Plume & Croc",
+  "short_name": "Plume & Croc",
   "description": "Mes mots de vocabulaire, révisés au bon moment.",
   "lang": "fr",
   "start_url": "./index.html",
