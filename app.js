@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '3.0.1';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -151,6 +151,15 @@ let view = 'rev';
 let backend = null;
 let framed = false;
 let session = null;
+const sessions = { w: null, e: null };
+const isPlay = () => view === 'rev' || view === 'ear' || view === 'hunt';
+// switching between plume and oreille keeps each its own review session
+function setTrack(t) {
+  if (t === TR) return;
+  sessions[TR] = session; TR = t; session = sessions[t];
+  if (typeof stopSprint === 'function') stopSprint();
+  ui.sprint = null; ui.duel = null;
+}
 let popBox = -1, popScore = false;
 const ui = { theme: 'all', q: '', libLang: null, openId: null, importText: '', addLang: 'en', addLib: '__auto', addNew: false, editLib: null, confirm: null, newLib: false, restore: null, backupText: '' };
 
@@ -161,14 +170,21 @@ const split = s => String(s).split(/[\/;]/).map(x => x.trim()).filter(Boolean);
 const midnight = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const ymd = t => { const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const isDue = w => w.due <= Date.now();
+// two tracks on the same words: 'w' = plume (written), 'e' = oreille (listening, stored in w.e)
+let TR = 'w';
+const ST = w => TR === 'e' ? (w.e || { lvl: 0, due: 0, ok: 0, ko: 0 }) : w;
+const lvlOf = w => ST(w).lvl || 0;
+function upd(w, p) { return TR === 'e' ? update(w, { e: { ...ST(w), ...p } }) : update(w, p); }
+const isDue = w => (ST(w).due || 0) <= Date.now();
 const wLang = w => w.lang || 'en';
 const wLib = w => w.lib || 'default';
 const getLang = id => cfg.langs.find(l => l.id === id) || { id, name: id, code: '' };
 const getLib = id => cfg.libs.find(l => l.id === id) || { id, name: 'Sans thème', lang: '' };
 const lower = s => s.toLowerCase();
 const normT = (s, lang) => getLang(lang).code === 'en' ? norm(s).replace(/^to /, '') : norm(s);
-const score = () => [...words.values()].reduce((s, w) => s + PTS[w.lvl], 0);
+const scoreW = () => [...words.values()].reduce((s, w) => s + PTS[w.lvl], 0);
+const scoreE = () => [...words.values()].reduce((s, w) => s + PTS[w.e?.lvl || 0], 0);
+const score = () => scoreW() + scoreE();
 const plural = (n, a, b) => n + ' ' + (n > 1 ? b : a);
 const fmt = n => n.toLocaleString('fr-FR');
 
@@ -454,7 +470,7 @@ const isKorean = id => { const l = id && id !== 'fr' && getLang(id); return !!l 
 function achValues() {
   const all = [...words.values()], st = cfg.stats, days = st.days || {};
   const perLang = f => Math.max(0, ...cfg.langs.map(l => all.filter(w => wLang(w) === l.id && f(w)).length));
-  const sumOk = all.reduce((n, w) => n + (w.ok || 0), 0);
+  const sumOk = all.reduce((n, w) => n + (w.ok || 0) + (w.e?.ok || 0), 0);
   if (sumOk > (st.totalOk || 0)) st.totalOk = sumOk;
   return {
     goal: Object.keys(days).filter(k => days[k] >= dayGoal(k)).length,
@@ -576,7 +592,18 @@ function questions(w, S, idx) {
   S.filter(x => x !== 'fr' && x !== L).forEach(L2 => { const c = counterparts(w, L2, idx); if (c.length) res.push({ prompt: w.en, pl: L, answers: uniq(c.flatMap(x => x.en)), al: L2, addTo: null }); });
   return res;
 }
-function askable() { const S = answerLangs(), idx = cpIndex(); return w => inScope(w) && questions(w, S, idx).length > 0; }
+// at the oreille, the foreign word is heard; answering in its own language = dictation
+const hasVoice = id => { if (!canSpeak() || id === 'fr') return false; const v = speechSynthesis.getVoices(); return !v.length || v.some(x => x.lang && x.lang.toLowerCase().startsWith(langCode(id).toLowerCase())); };
+function earQs(w, S, idx) {
+  const L = wLang(w), res = [];
+  if (!hasVoice(L)) return res;
+  if (S.includes('fr')) res.push({ prompt: w.en, pl: L, answers: w.fr, al: 'fr', addTo: 'fr' });
+  if (S.includes(L)) res.push({ prompt: w.en, pl: L, answers: w.en, al: L, addTo: null, dict: true });
+  S.filter(x => x !== 'fr' && x !== L).forEach(L2 => { const c = counterparts(w, L2, idx); if (c.length) res.push({ prompt: w.en, pl: L, answers: uniq(c.flatMap(x => x.en)), al: L2, addTo: null }); });
+  return res;
+}
+const qsFor = (w, S, idx) => TR === 'e' ? earQs(w, S, idx) : questions(w, S, idx);
+function askable() { const S = answerLangs(), idx = cpIndex(); return w => inScope(w) && qsFor(w, S, idx).length > 0; }
 const inFilter = w => askable()(w);
 function dueList() {
   const ok = askable();
@@ -596,7 +623,7 @@ function pickExtra() {
   const cands = [...words.values()].filter(ok);
   const fresh = cands.filter(w => !session.last.includes(w.id));
   const pool = fresh.length ? fresh : cands;
-  const wt = w => 1 / (w.lvl + 1) + w.ko * .15;
+  const wt = w => 1 / (lvlOf(w) + 1) + (ST(w).ko || 0) * .15;
   let r = Math.random() * pool.reduce((s, w) => s + wt(w), 0);
   for (const w of pool) { r -= wt(w); if (r <= 0) return w.id; }
   return pool[0]?.id;
@@ -613,7 +640,7 @@ function next() {
   } else id = pickExtra();
   if (!id) { s.cur = null; s.state = 'done'; return; }
   s.last = [id, ...s.last].slice(0, 3);
-  const qs = questions(words.get(id), answerLangs(), cpIndex());
+  const qs = qsFor(words.get(id), answerLangs(), cpIndex());
   const q = qs[Math.floor(Math.random() * qs.length)];
   s.cur = { id, ...q, given: '', delta: 0, from: 0, to: 0 };
   ui.toCard = s.done > 0;
@@ -622,12 +649,20 @@ function next() {
 const variants = t => { const v = String(t).replace(/\([^)]*\)/g, ' ').split(/[,\/;]/).map(x => x.trim()).filter(Boolean); return v.length ? v : [t]; };
 function check(given, q) {
   const parts = String(given).replace(/\([^)]*\)/g, ' ').split(/[,\/;]/).map(x => x.trim()).filter(Boolean);
-  const all = q.answers.flatMap(variants);
+  const all = homo(q.answers.flatMap(variants), q.al);
   const known = q.al === 'fr' ? new Set([...words.values()].flatMap(w => w.fr.flatMap(variants)).map(frLoose)) : null;
   const one = g => all.some(t => q.al === 'fr' ? frClose(g, t, known) : normT(t, q.al) === normT(g, q.al));
   return one(given) || (parts.length > 1 && parts.every(one));
 }
 const mustRetype = q => q.al !== 'fr';
+// words that sound the same are accepted at the oreille
+const HOMO = ['there their they\'re', 'to too two', 'right write rite', 'see sea', 'hear here', 'know no', 'knew new', 'buy by bye', 'for four', 'one won', 'eight ate', 'son sun', 'meet meat', 'week weak', 'road rode', 'flower flour', 'pair pear', 'piece peace', 'hole whole', 'hour our', 'wear where', 'weather whether', 'which witch', 'mail male', 'tail tale', 'plain plane', 'sail sale', 'blue blew', 'red read', 'night knight', 'not knot', 'whose who\'s', 'its it\'s', 'your you\'re', 'bare bear', 'break brake', 'cell sell', 'dear deer', 'fair fare', 'flew flu', 'heal heel', 'made maid', 'way weigh', 'wood would', 'steal steel', 'stair stare', 'sweet suite', 'threw through', 'waist waste', 'wait weight', 'allowed aloud', 'board bored', 'cent scent sent', 'die dye', 'feat feet', 'groan grown', 'hair hare', 'higher hire', 'hymn him', 'idle idol', 'in inn', 'lead led', 'loan lone', 'medal meddle', 'missed mist', 'morning mourning', 'peak peek', 'principal principle', 'rain reign rein', 'role roll', 'root route', 'sole soul', 'some sum', 'stationary stationery', 'tide tied', 'toe tow', 'vain vein', 'wail whale', 'war wore'].map(x => x.split(' '));
+function homo(list, al) {
+  if (TR !== 'e' || langCode(al) !== 'en') return list;
+  const out = [...list];
+  list.forEach(t => { const n = normT(t, al); HOMO.forEach(g => { if (g.some(x => normT(x, al) === n)) out.push(...g); }); });
+  return uniq(out);
+}
 function submit(val) {
   const s = session, w = words.get(s.cur.id);
   if (!w) return;
@@ -656,21 +691,21 @@ function touchDay() {
   return true;
 }
 function grade(w, good) {
-  const s = session, from = w.lvl;
+  const s = session, from = lvlOf(w);
   s.done++;
   let to = from;
   if (good) {
     s.good++; s.combo++; s.bestCombo = Math.max(s.bestCombo, s.combo);
     addDay();
     if (s.combo > (cfg.stats.bestCombo || 0)) cfg.stats.bestCombo = s.combo;
-    if (s.extra && !isDue(w)) update(w, { ok: w.ok + 1 });
+    if (s.extra && !isDue(w)) upd(w, { ok: (ST(w).ok || 0) + 1 });
     else {
       to = s.missed.has(w.id) ? 1 : Math.min(from + 1, TOP);
-      update(w, { lvl: to, due: midnight(Date.now() + INTER[to] * DAY), ok: w.ok + 1 });
+      upd(w, { lvl: to, due: midnight(Date.now() + INTER[to] * DAY), ok: (ST(w).ok || 0) + 1 });
     }
   } else {
     s.combo = 0; s.missed.add(w.id); to = 0;
-    update(w, { lvl: 0, due: Date.now(), ko: w.ko + 1 });
+    upd(w, { lvl: 0, due: Date.now(), ko: (ST(w).ko || 0) + 1 });
     // a missed word comes back 8 to 12 words later (or at the end of the round)
     if (!s.extra) s.queue.splice(Math.min(8 + Math.floor(Math.random() * 5), s.queue.length), 0, w.id);
   }
@@ -685,7 +720,8 @@ function grade(w, good) {
 function acceptMine() {
   const s = session, w = words.get(s.cur.id), key = s.cur.addTo;
   if (!key) return;
-  const restored = update(w, { [key]: [...w[key], s.cur.given.trim()], lvl: s.cur.from, ko: Math.max(0, w.ko - 1), due: Date.now() });
+  let restored = update(w, { [key]: [...w[key], s.cur.given.trim()] });
+  restored = upd(restored, { lvl: s.cur.from, ko: Math.max(0, (ST(restored).ko || 0) - 1), due: Date.now() });
   s.cur.answers = [...s.cur.answers, s.cur.given.trim()];
   s.missed.delete(w.id); s.done--; s.gained -= s.cur.delta;
   const qi = s.queue.indexOf(w.id); if (qi >= 0) s.queue.splice(qi, 1);
@@ -693,26 +729,26 @@ function acceptMine() {
 }
 
 /* ---------- games: sprint, boss, duel ---------- */
-const MODES = [['rev', 'Révision'], ['sprint', 'Sprint 60 s'], ['boss', 'Boss'], ['duel', 'Duel']];
-const flagOf = q => (q.pl === 'fr' ? 'Français' : getLang(q.pl).name) + ' → ' + langName(q.al);
+const MODES = [['rev', 'Révision'], ['sprint', 'Sprint 60 s'], ['duel', 'Duel']];
+const flagOf = q => TR === 'e' ? 'Écoute → ' + langName(q.al) + (q.dict ? ' (dictée)' : '') : (q.pl === 'fr' ? 'Français' : getLang(q.pl).name) + ' → ' + langName(q.al);
 function pickQ(exclude) {
   const S = answerLangs(), idx = cpIndex();
-  let pool = [...words.values()].filter(w => inScope(w) && questions(w, S, idx).length);
+  let pool = [...words.values()].filter(w => inScope(w) && qsFor(w, S, idx).length);
   const fresh = pool.filter(w => !exclude.includes(w.id));
   if (fresh.length) pool = fresh;
   if (!pool.length) return null;
-  const w = pool[Math.floor(Math.random() * pool.length)], qs = questions(w, S, idx);
+  const w = pool[Math.floor(Math.random() * pool.length)], qs = qsFor(w, S, idx);
   return { id: w.id, ...qs[Math.floor(Math.random() * qs.length)] };
 }
 // result of an answer outside the normal review (sprint, boss): same rules, no retype
 function applyResult(w, good) {
-  const from = w.lvl;
+  const from = lvlOf(w);
   let to = from;
   if (good) {
     addDay();
-    if (isDue(w)) { to = Math.min(from + 1, TOP); update(w, { lvl: to, due: midnight(Date.now() + INTER[to] * DAY), ok: w.ok + 1 }); }
-    else update(w, { ok: w.ok + 1 });
-  } else { to = 0; update(w, { lvl: 0, due: Date.now(), ko: w.ko + 1 }); }
+    if (isDue(w)) { to = Math.min(from + 1, TOP); upd(w, { lvl: to, due: midnight(Date.now() + INTER[to] * DAY), ok: (ST(w).ok || 0) + 1 }); }
+    else upd(w, { ok: (ST(w).ok || 0) + 1 });
+  } else { to = 0; upd(w, { lvl: 0, due: Date.now(), ko: (ST(w).ko || 0) + 1 }); }
   if (to === TOP && from !== TOP) ui.fxMastered = true;
   popBox = to !== from ? to : -1;
   popScore = PTS[to] > PTS[from];
@@ -752,7 +788,7 @@ function sprintEnd() {
   sp.record = sp.score > (cfg.stats.sprintBest || 0);
   if (sp.record) { cfg.stats.sprintBest = sp.score; saveCfg(); confetti(); }
   if (!sp.score) award('escargot');
-  if (view === 'rev' && ui.mode === 'sprint') { document.activeElement?.blur?.(); render(); }
+  if ((view === 'rev' || view === 'ear') && ui.mode === 'sprint') { document.activeElement?.blur?.(); render(); }
   celebrate();
 }
 function sprintAnswer(val) {
@@ -783,44 +819,358 @@ function renderSprint() {
   return `<div class="card">
     <div class="dir"><span class="flag">${esc(flagOf(q))}</span><span><b id="stime" class="big2">${left}</b> s · <b>${sp.score}</b> ${sp.score > 1 ? 'justes' : 'juste'}</span></div>
     <div class="tbar"><i id="tbar" style="width:${left / 60 * 100}%"></i></div>
-    <div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>
+    ${promptBox(q, 's' + sp.score + '-' + sp.wrong + q.id, false)}
     <form id="sf" autocomplete="off" style="margin-top:14px">${answerInput(q, 'En ' + langName(q.al) + '…')}<div class="row"><button class="btn grow" type="submit">Valider</button></div></form>
     ${flash}
   </div>`;
 }
 
-/* boss: creatures of the world's folklore, collected in the bestiary */
-// rate = hidden chance (%) when the creature can appear; has = its picture exists (boss-<id>.webp)
-// cond: always | night | fullmoon | winter | winternight | halloween | december | korean
-// rules: classic, fragile (1 life), chrono (10 s per word), colossus (20 words, 5 lives),
-//        hydra (an error adds a word), greedy (an error gives it back a word), strict (no typo), trick (answer language changes)
+/* monsters: creatures of the world's folklore, collected in the bestiary */
+// mode: 'both' (plume and oreille), 'w' (plume only) or 'e' (oreille only)
+// rar sets the hidden chance of appearing; cond: always, night, fullmoon, winter, winternight, summer, halloween, december, lunarny, korean
 const BEASTS = [
-  { id: 'gobelin', name: 'Gobelin', from: 'Europe', rar: 'Commun', rate: 6, cond: 'always', rules: ['classic'], has: true, txt: 'Petit, rusé et chapardeur, il hante les caves et les forêts d\'Europe. Il adore les mauvais tours, surtout aux voyageurs distraits.' },
-  { id: 'kappa', name: 'Kappa', from: 'Japon', rar: 'Commun', rate: 5, cond: 'always', rules: ['classic'], has: true, txt: 'Lutin des rivières japonaises, il garde de l\'eau dans la coupelle de son crâne. Salue-le poliment : en s\'inclinant, il la renverse et perd sa force.' },
-  { id: 'troll', name: 'Troll', from: 'Scandinavie', rar: 'Commun', rate: 5, cond: 'always', rules: ['colossus'], has: true, txt: 'Géant des montagnes du Nord, lent mais d\'une force colossale. La légende dit que la lumière du soleil le change en pierre.' },
-  { id: 'golem', name: 'Golem', from: 'Europe centrale', rar: 'Commun', rate: 5, cond: 'always', rules: ['colossus'], has: true, txt: 'Façonné dans l\'argile au bord de la Vltava, à Prague, il prend vie grâce à un mot gravé sur son front. Il obéit sans relâche, sans jamais se fatiguer.' },
-  { id: 'minotaure', name: 'Minotaure', from: 'Grèce', rar: 'Commun', rate: 5, cond: 'always', rules: ['classic'], has: true, txt: 'Mi-homme mi-taureau, enfermé dans le labyrinthe du roi Minos en Crète. Il fallut le fil d\'Ariane pour que Thésée en ressorte vivant.' },
-  { id: 'harpie', name: 'Harpie', from: 'Grèce', rar: 'Commun', rate: 5, cond: 'always', rules: ['chrono'], has: true, txt: 'Rapide comme la tempête, elle fond sur sa proie et l\'emporte avant qu\'on ait compris. Ne traîne pas pour répondre !' },
-  { id: 'tengu', name: 'Tengu', from: 'Japon', rar: 'Commun', rate: 5, cond: 'always', rules: ['chrono'], has: true, txt: 'Esprit fier des montagnes japonaises, maître du sabre et des arts martiaux. On dit qu\'il enseigna l\'escrime aux plus grands guerriers.' },
-  { id: 'chupacabra', name: 'Chupacabra', from: 'Amérique latine', rar: 'Commun', rate: 4, cond: 'always', rules: ['classic'], has: true, txt: 'Aperçu à Porto Rico puis au Mexique, ce « suceur de chèvres » rôde la nuit autour des fermes. Personne n\'en a jamais attrapé un.' },
-  { id: 'kelpie', name: 'Kelpie', from: 'Écosse', rar: 'Commun', rate: 4, cond: 'always', rules: ['fragile'], has: true, txt: 'Cheval noir des lochs écossais, il invite les voyageurs à monter sur son dos… puis plonge au fond de l\'eau. Une seule erreur suffit.' },
-  { id: 'dokkaebi', name: 'Dokkaebi', from: 'Corée', rar: 'Commun', rate: 4.5, cond: 'korean', rules: ['classic'], has: true, txt: 'Lutin farceur coréen, armé d\'un gourdin magique qui fait apparaître tout ce qu\'il souhaite. Il adore les défis, les jeux et la lutte.' },
-  { id: 'hydre', name: 'Hydre', from: 'Grèce', rar: 'Rare', rate: 3, cond: 'always', rules: ['hydra'], has: true, txt: 'Le monstre du marais de Lerne : chaque tête tranchée en fait repousser une autre. Chaque erreur ajoute un mot au combat.' },
-  { id: 'meduse', name: 'Méduse', from: 'Grèce', rar: 'Rare', rate: 3, cond: 'always', rules: ['chrono'], has: true, txt: 'La Gorgone aux cheveux de serpents : un seul regard et l\'on se change en pierre. Réponds vite, avant d\'être pétrifié.' },
-  { id: 'sphinx', name: 'Sphinx', from: 'Égypte', rar: 'Rare', rate: 3, cond: 'always', rules: ['strict'], has: true, txt: 'Gardien des cités, il pose une énigme à chaque passant et dévore ceux qui se trompent. Aucune faute de frappe n\'est tolérée.' },
-  { id: 'djinn', name: 'Djinn', from: 'Arabie', rar: 'Rare', rate: 3, cond: 'always', rules: ['trick'], has: false, txt: 'Esprit de fumée et de feu, enfermé dans une lampe. Il exauce les vœux… à sa façon. Méfie-toi : il change la langue de réponse à chaque mot.' },
-  { id: 'babayaga', name: 'Baba Yaga', from: 'Russie', rar: 'Rare', rate: 3, cond: 'always', rules: ['greedy'], has: false, txt: 'La sorcière des forêts slaves vole dans un mortier et vit dans une isba sur pattes de poule. Chaque erreur la renforce.' },
-  { id: 'gumiho', name: 'Gumiho', from: 'Corée', rar: 'Rare', rate: 3, cond: 'korean', rules: ['trick'], has: false, txt: 'Renard à neuf queues de la légende coréenne, maître de l\'illusion. Il brouille les pistes en changeant la langue à chaque mot.' },
-  { id: 'banshee', name: 'Banshee', from: 'Irlande', rar: 'Nocturne', rate: 4, cond: 'night', rules: ['fragile'], has: false, txt: 'Son cri déchire la nuit irlandaise. Elle n\'apparaît qu\'à la nuit tombée, et ne laisse aucune seconde chance.' },
-  { id: 'strigoi', name: 'Strigoï', from: 'Roumanie', rar: 'Nocturne', rate: 4, cond: 'night', rules: ['greedy'], has: false, txt: 'Le vampire des Carpates sort de sa tombe à la nuit tombée. Chaque erreur le nourrit et lui rend des forces.' },
-  { id: 'loupgarou', name: 'Loup-garou', from: 'Europe', rar: 'Nocturne', rate: 6, cond: 'fullmoon', rules: ['colossus', 'chrono'], has: false, txt: 'Homme le jour, bête les soirs de pleine lune. On ne le croise que lorsque la lune est pleine.' },
-  { id: 'yeti', name: 'Yéti', from: 'Himalaya', rar: 'Saisonnier', rate: 4, cond: 'winter', rules: ['colossus'], has: false, txt: 'L\'abominable homme des neiges laisse d\'immenses traces dans les cols de l\'Himalaya. Il ne descend qu\'en hiver.' },
-  { id: 'wendigo', name: 'Wendigo', from: 'Amérique du Nord', rar: 'Saisonnier', rate: 3, cond: 'winternight', rules: ['greedy'], has: false, txt: 'Esprit de la faim des forêts glacées, il rôde les nuits d\'hiver. Il ne se rassasie jamais : chaque erreur le nourrit.' },
-  { id: 'cavalier', name: 'Cavalier sans tête', from: 'Irlande et Amérique', rar: 'Saisonnier', rate: 6, cond: 'halloween', rules: ['fragile', 'chrono'], has: false, txt: 'Il galope à la recherche de sa tête perdue. On ne le croise que pendant la semaine d\'Halloween.' },
-  { id: 'krampus', name: 'Krampus', from: 'Alpes', rar: 'Saisonnier', rate: 5, cond: 'december', rules: ['hydra'], has: false, txt: 'Le compagnon sombre de saint Nicolas punit les enfants pas sages. Il ne sort qu\'en décembre.' },
-  { id: 'kraken', name: 'Kraken', from: 'Scandinavie', rar: 'Légendaire', rate: 1, cond: 'always', rules: ['colossus', 'hydra'], has: false, txt: 'Le monstre des abysses de Norvège, si grand qu\'on le prenait pour une île. Très peu de marins l\'ont vu et sont revenus pour le raconter.' },
-  { id: 'dragon', name: 'Dragon', from: 'Partout dans le monde', rar: 'Légendaire', rate: 0.5, cond: 'always', rules: ['colossus', 'chrono'], has: false, txt: 'Présent dans presque toutes les cultures, de la Chine à l\'Europe. Le plus rare et le plus redoutable de tous.' }
+  { id: 'gobelin', name: 'Gobelin', from: 'Europe', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'Petit, maigre et rusé, le gobelin vit dans les caves, les mines et les sous-bois d\'Europe. Il chaparde tout ce qui brille, renverse le lait et égare les voyageurs avec de fausses lueurs. Les vieilles histoires disent qu\'il ne supporte pas qu\'on se moque de lui : il se venge toujours, mais rarement de façon bien dangereuse.',
+    fact: 'Le mot « gobelin » viendrait du grec kobalos, « fripon ». Le métal cobalt tient son nom d\'un cousin allemand, le Kobold, accusé de gâcher le minerai des mineurs.',
+    tip: 'C\'est souvent le premier adversaire d\'un chasseur : reste concentré et il ne fera pas long feu.' },
+  { id: 'kappa', name: 'Kappa', from: 'Japon', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'Dans les rivières et les étangs du Japon vit le kappa, un petit être à carapace de tortue, à la peau verte et au bec de canard. Sur son crâne, une coupelle remplie d\'eau lui donne une force prodigieuse : il peut renverser un cheval et entraîner les imprudents au fond de l\'eau. Mais il est d\'une politesse extrême. Celui qui le salue l\'oblige à lui rendre son salut : l\'eau de sa coupelle se renverse, et le voilà sans force.',
+    fact: 'Il adore les concombres : au Japon, on en jette encore dans les rivières pour l\'amadouer, et les sushis au concombre s\'appellent des kappa-maki.',
+    tip: 'Reste poli et concentré : un combat classique, mais le kappa ne pardonne pas les erreurs répétées.' },
+  { id: 'troll', name: 'Troll', from: 'Scandinavie', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Les trolls habitent les montagnes, les forêts profondes et le dessous des ponts de Norvège et de Suède. Énormes, lents et d\'une force terrible, ils ne sont pas très malins mais très rancuniers. La nuit, ils rôdent autour des fermes. Au lever du jour, ils doivent fuir : la lumière du soleil les change en pierre pour toujours.',
+    fact: 'En Norvège, on montre encore aux enfants des rochers aux formes étranges en racontant qu\'il s\'agit de trolls surpris par l\'aube.',
+    tip: 'Il est solide : 20 mots à abattre, mais tu as 5 vies. Garde ton calme jusqu\'au bout.' },
+  { id: 'golem', name: 'Golem', from: 'Europe centrale', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'w',
+    story: 'À Prague, au XVIe siècle, le rabbin Loew aurait façonné un géant d\'argile tiré de la Vltava pour protéger son quartier. Il l\'anima en écrivant un mot sacré sur son front. Le golem obéissait sans relâche, sans jamais se fatiguer, mais il grandissait chaque jour et devint incontrôlable. Pour l\'arrêter, il fallut effacer une seule lettre sur son front.',
+    fact: 'Le mot gravé était « emet », « vérité » en hébreu. En effaçant la première lettre, on obtient « met » : « mort ».',
+    tip: 'Le golem vit par l\'écrit : il ne se combat qu\'à vue. Un colosse, alors économise tes vies.' },
+  { id: 'minotaure', name: 'Minotaure', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'Mi-homme mi-taureau, le Minotaure était enfermé au cœur du Labyrinthe construit par Dédale pour le roi Minos, en Crète. Chaque année, Athènes devait lui envoyer de jeunes gens. Le héros Thésée entra un jour dans le Labyrinthe, vainquit le monstre et retrouva la sortie grâce au fil que lui avait donné la princesse Ariane.',
+    fact: 'Le « fil d\'Ariane » est devenu une expression pour parler de ce qui guide dans une situation compliquée.',
+    tip: 'Avance mot après mot, comme Thésée dans le Labyrinthe, sans perdre le fil.' },
+  { id: 'harpie', name: 'Harpie', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['chrono'], mode: 'e',
+    story: 'Les harpies sont des créatures ailées, mi-femmes mi-oiseaux, envoyées par les dieux pour punir. Rapides comme la tempête, elles fondent sur leurs proies en poussant des cris stridents et emportent tout avant qu\'on ait eu le temps de réagir. Le roi Phinée, condamné par Zeus, les voyait voler sa nourriture à chaque repas.',
+    fact: 'Leur nom vient du grec harpazein, « arracher, saisir ». Le grand aigle harpie d\'Amérique du Sud leur doit son nom.',
+    tip: 'On la repère à ses cris : elle ne se chasse qu\'à l\'oreille, et il faut répondre vite.' },
+  { id: 'tengu', name: 'Tengu', from: 'Japon', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'Esprits des montagnes japonaises, les tengu ont un visage rouge, un très long nez et de grandes ailes noires. Fiers et orgueilleux, ce sont de redoutables maîtres du sabre. On raconte qu\'un tengu enseigna l\'escrime au jeune Minamoto no Yoshitsune, qui devint l\'un des plus grands guerriers du Japon.',
+    fact: 'Les premiers tengu ressemblaient à des oiseaux de proie. Le long nez n\'est apparu qu\'au fil des siècles.',
+    tip: 'Le tengu frappe vite : 10 secondes par mot. Ne réfléchis pas trop longtemps.' },
+  { id: 'chupacabra', name: 'Chupacabra', from: 'Amérique latine', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'En 1995, à Porto Rico, des fermiers retrouvent leurs chèvres mortes, vidées de leur sang, avec deux petites marques au cou. Très vite, on parle d\'une créature aux yeux rouges et aux épines sur le dos : le chupacabra, le « suceur de chèvres ». Les témoignages se multiplient ensuite au Mexique et jusqu\'au Chili, mais personne n\'en a jamais capturé un.',
+    fact: 'C\'est l\'un des rares monstres « modernes » : sa légende a à peine trente ans.',
+    tip: 'Une chasse classique : sois aussi patient que les fermiers qui le guettent la nuit.' },
+  { id: 'kelpie', name: 'Kelpie', from: 'Écosse', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['fragile'], mode: 'both',
+    story: 'Au bord des lochs d\'Écosse attend parfois un magnifique cheval noir, docile et trempé. Celui qui monte sur son dos ne peut plus en descendre : sa peau devient collante, et le kelpie galope droit dans l\'eau pour entraîner son cavalier au fond. Seul celui qui parvient à lui passer une bride ensorcelée peut le dompter.',
+    fact: 'Deux sculptures géantes de têtes de chevaux, « The Kelpies », hautes de 30 mètres, se dressent près de Falkirk en Écosse.',
+    tip: 'Une seule erreur et il t\'entraîne au fond : tu n\'as qu\'une vie.' },
+  { id: 'dokkaebi', name: 'Dokkaebi', from: 'Corée', reg: 'Asie', rar: 'Commun', cond: 'korean', rules: ['classic'], mode: 'both',
+    story: 'Le dokkaebi est un lutin farceur du folklore coréen. Il adore les jeux, la lutte et les défis, et récompense ceux qui le battent à la loyale. Avec son gourdin magique, le bangmangi, il peut faire apparaître de l\'or ou un festin. Mais gare aux tricheurs : il les punit en leur faisant pousser une longue bosse sur le visage.',
+    fact: 'L\'équipe de football de Corée du Sud était surnommée les « Diables rouges », et leur symbole s\'inspire souvent du dokkaebi.',
+    tip: 'Il n\'apparaît que si tu révises le coréen. Un combat classique, joue franc-jeu.' },
+  { id: 'hydre', name: 'Hydre', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['hydra'], mode: 'both',
+    story: 'Dans les marais de Lerne vivait l\'Hydre, un serpent géant à plusieurs têtes dont l\'haleine était un poison mortel. Chaque fois qu\'on tranchait une tête, deux autres repoussaient. Pour son deuxième travail, Hercule ne la vainquit qu\'avec l\'aide de son neveu Iolaos, qui brûlait chaque cou tranché pour l\'empêcher de repousser.',
+    fact: 'Les biologistes ont donné le nom d\'hydre à un minuscule animal d\'eau douce capable de se régénérer entièrement.',
+    tip: 'Chaque erreur fait pousser une tête, donc un mot de plus. Évite les fautes dès le début.' },
+  { id: 'meduse', name: 'Méduse', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'w',
+    story: 'Méduse était la seule mortelle des trois Gorgones. Ses cheveux étaient des serpents vivants, et quiconque croisait son regard se changeait en pierre. Le héros Persée l\'approcha sans jamais la regarder en face, en suivant son reflet dans son bouclier poli, et lui trancha la tête.',
+    fact: 'De son sang serait né Pégase, le cheval ailé.',
+    tip: 'On l\'affronte du regard, donc à vue, et vite : 10 secondes par mot avant d\'être pétrifié.' },
+  { id: 'sphinx', name: 'Sphinx', from: 'Égypte', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'w',
+    story: 'Corps de lion, ailes d\'aigle et visage humain, le Sphinx gardait l\'entrée de la ville de Thèbes. À chaque voyageur, il posait une énigme : « Qui marche à quatre pattes le matin, à deux le midi et à trois le soir ? » Ceux qui se trompaient étaient dévorés. Œdipe trouva la réponse, l\'homme, et le Sphinx se jeta du haut de son rocher.',
+    fact: 'Le grand Sphinx de Gizeh, en Égypte, mesure 73 mètres de long et a plus de 4 500 ans.',
+    tip: 'Le maître des énigmes écrites ne tolère aucune faute : orthographe parfaite exigée.' },
+  { id: 'djinn', name: 'Djinn', from: 'Arabie', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['trick'], mode: 'both',
+    story: 'Dans les traditions arabes, les djinns sont des êtres nés d\'un feu sans fumée, bien avant les hommes. Invisibles la plupart du temps, ils vivent dans les déserts, les ruines et les lieux abandonnés. Certains sont bienveillants, d\'autres malicieux. Tous adorent tromper les voyageurs en prenant des formes inattendues.',
+    fact: 'Le mot « génie » en français vient en partie de « djinn », par les traductions des Mille et Une Nuits.',
+    tip: 'Le djinn brouille les pistes : la langue de réponse change à chaque mot. Lis bien la consigne.' },
+  { id: 'babayaga', name: 'Baba Yaga', from: 'Russie', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['greedy'], mode: 'both',
+    story: 'Au fond de la forêt russe se dresse une isba posée sur des pattes de poule, qui tourne sur elle-même. C\'est la maison de Baba Yaga, la sorcière aux dents de fer. Elle vole dans un mortier, se dirige avec un pilon et efface ses traces avec un balai. Elle dévore les imprudents, mais aide parfois les héros polis et courageux.',
+    fact: 'Le compositeur Moussorgski lui a consacré un morceau célèbre : « La Cabane sur des pattes de poule ».',
+    tip: 'Chaque erreur la nourrit : le mot raté revient à la fin du combat.' },
+  { id: 'gumiho', name: 'Gumiho', from: 'Corée', reg: 'Asie', rar: 'Rare', cond: 'korean', rules: ['trick'], mode: 'both',
+    story: 'Un renard qui vit mille ans gagne neuf queues et devient un gumiho. Maître de l\'illusion, il peut prendre l\'apparence d\'une personne pour tromper les humains. On dit que s\'il ne mange pas pendant mille jours, il peut devenir humain pour de bon. Il garde dans sa bouche une perle magique, la yeowu guseul, source de son savoir.',
+    fact: 'Le gumiho est l\'héroïne de nombreuses séries coréennes, souvent en personnage attachant plutôt qu\'en monstre.',
+    tip: 'Il n\'apparaît que si tu révises le coréen, et il change la langue de réponse à chaque mot.' },
+  { id: 'banshee', name: 'Banshee', from: 'Irlande', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['fragile'], mode: 'e',
+    story: 'En Irlande, certaines vieilles familles ont leur banshee, la « femme des fées ». La nuit, elle erre près des maisons, cheveux défaits, vêtue de gris. Quand quelqu\'un de la famille va bientôt mourir, elle pousse un long cri déchirant, que tout le monde entend sauf celui qu\'il concerne.',
+    fact: 'En gaélique, son nom s\'écrit bean sí, « femme du tertre des fées ».',
+    tip: 'On l\'entend avant de la voir : elle ne se chasse qu\'à l\'oreille, la nuit, et sans droit à l\'erreur.' },
+  { id: 'strigoi', name: 'Strigoï', from: 'Roumanie', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['greedy'], mode: 'both',
+    story: 'Dans les villages des Carpates, le strigoï est un mort qui ne trouve pas le repos. La nuit, il sort de sa tombe pour hanter ses anciens voisins et voler leur force vitale. Pour s\'en protéger, on accrochait de l\'ail aux fenêtres et on laissait des graines de pavot devant la porte : il était obligé de les compter jusqu\'à l\'aube.',
+    fact: 'Ces légendes roumaines ont inspiré l\'écrivain Bram Stoker pour son roman Dracula.',
+    tip: 'Il ne sort que la nuit, et chaque erreur le nourrit : le mot raté revient.' },
+  { id: 'loupgarou', name: 'Loup-garou', from: 'Europe', reg: 'Europe', rar: 'Nocturne', cond: 'fullmoon', rules: ['colossus', 'chrono'], mode: 'both',
+    story: 'Le jour, c\'est un homme ordinaire. Mais les nuits de pleine lune, son corps se tord, ses os craquent et il devient une bête énorme et affamée. Dans la France d\'autrefois, on craignait les « garous » qui couraient la campagne. On disait que seule une balle d\'argent pouvait en venir à bout.',
+    fact: 'La peur des loups-garous a donné lieu à de vrais procès en France aux XVIe et XVIIe siècles.',
+    tip: 'Seulement les soirs de pleine lune : un colosse rapide. Une vraie épreuve d\'endurance.' },
+  { id: 'yeti', name: 'Yéti', from: 'Himalaya', reg: 'Asie', rar: 'Saisonnier', cond: 'winter', rules: ['colossus'], mode: 'both',
+    story: 'Dans les cols enneigés de l\'Himalaya, les Sherpas parlent d\'une créature géante couverte de fourrure blanche : le yéti. Des alpinistes ont photographié d\'immenses empreintes dans la neige, et certains monastères conservaient même des « scalps » de yéti. Il ne descendrait des sommets qu\'en hiver.',
+    fact: 'En 1951, l\'alpiniste Eric Shipton a photographié une empreinte de 33 cm, qui a fait le tour du monde.',
+    tip: 'Il ne se montre qu\'en hiver : un colosse, alors garde tes forces.' },
+  { id: 'wendigo', name: 'Wendigo', from: 'Amérique du Nord', reg: 'Amériques', rar: 'Saisonnier', cond: 'winternight', rules: ['greedy'], mode: 'both',
+    story: 'Chez les peuples algonquiens du Canada et des Grands Lacs, le wendigo est l\'esprit de l\'hiver et de la faim. Grand, maigre, glacé, il rôde dans les forêts pendant les nuits les plus froides. Plus il mange, plus il grandit, et plus il a faim : jamais il n\'est rassasié.',
+    fact: 'Pour ces peuples, le wendigo symbolise aussi l\'égoïsme et l\'avidité qui menacent une communauté en temps de famine.',
+    tip: 'Uniquement les nuits d\'hiver, et chaque erreur le nourrit.' },
+  { id: 'cavalier', name: 'Cavalier sans tête', from: 'Irlande et Amérique', reg: 'Europe', rar: 'Saisonnier', cond: 'halloween', rules: ['fragile', 'chrono'], mode: 'both',
+    story: 'En Irlande, le Dullahan galope la nuit sur un cheval noir, tenant sa propre tête sous le bras. En Amérique, la légende de Sleepy Hollow parle d\'un soldat décapité qui cherche sa tête perdue, et lance une citrouille enflammée sur les passants. On ne le croise qu\'autour d\'Halloween.',
+    fact: 'La Légende de Sleepy Hollow, écrite par Washington Irving en 1820, est l\'une des plus anciennes histoires de fantômes américaines.',
+    tip: 'Seulement la semaine d\'Halloween : rapide et sans pitié, une seule vie et 10 secondes par mot.' },
+  { id: 'krampus', name: 'Krampus', from: 'Alpes', reg: 'Europe', rar: 'Saisonnier', cond: 'december', rules: ['hydra'], mode: 'both',
+    story: 'Dans les Alpes autrichiennes et bavaroises, saint Nicolas ne vient pas seul. Il est accompagné du Krampus, une créature cornue et velue qui fait tinter ses chaînes. Pendant que le saint récompense les enfants sages, le Krampus menace les autres de ses verges de bouleau et de sa grande hotte.',
+    fact: 'Chaque 5 décembre, des défilés de Krampus, les Krampuslauf, ont encore lieu en Autriche.',
+    tip: 'Uniquement en décembre : chaque erreur ajoute un mot au combat.' },
+  { id: 'kraken', name: 'Kraken', from: 'Scandinavie', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'hydra'], mode: 'both',
+    story: 'Les marins norvégiens redoutaient le kraken, un monstre des abysses si gigantesque qu\'on le prenait pour une île. Quand il remontait à la surface, il entraînait les navires dans un tourbillon. Certains capitaines auraient même jeté l\'ancre sur son dos sans le savoir.',
+    fact: 'Le calmar géant, qui a sans doute inspiré la légende, n\'a été filmé vivant pour la première fois qu\'en 2004.',
+    tip: 'Une rencontre très rare. Colosse et hydre à la fois : le combat le plus long de la mer.' },
+  { id: 'dragon', name: 'Dragon', from: 'Partout dans le monde', reg: 'Monde entier', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'chrono'], mode: 'both',
+    story: 'De la Chine à l\'Europe, presque toutes les cultures ont leur dragon. En Occident, il crache le feu, garde des trésors et affronte les chevaliers. En Asie, il est sage, maître des pluies et des rivières. Partout, il est le plus puissant des êtres, celui qu\'aucun chasseur n\'oublie jamais.',
+    fact: 'Le mot vient du grec drakôn, « serpent », de la même racine que « voir clairement » : le dragon est celui qui voit tout.',
+    tip: 'Le plus rare de tous. 20 mots, 10 secondes chacun : il faudra être au sommet.' },
+  { id: 'oni', name: 'Oni', from: 'Japon', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Les oni sont les ogres du Japon : géants à la peau rouge ou bleue, cornus, armés d\'un énorme gourdin de fer hérissé de pointes. Ils vivent dans les montagnes et apportent maladies et malheurs. Le héros Momotarō, né d\'une pêche, partit les vaincre sur leur île avec un chien, un singe et un faisan.',
+    fact: 'Chaque année au Setsubun, les Japonais lancent des haricots en criant « Oni wa soto ! », « Les démons dehors ! ».',
+    tip: 'Fort comme un colosse : 20 mots, 5 vies.' },
+  { id: 'cyclope', name: 'Cyclope', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Les cyclopes sont des géants n\'ayant qu\'un œil au milieu du front. Certains forgeaient la foudre de Zeus. D\'autres, comme Polyphème, vivaient en bergers sauvages. Ulysse et ses compagnons, enfermés dans sa caverne, lui crevèrent l\'œil et s\'échappèrent cachés sous le ventre de ses moutons.',
+    fact: 'Pour le tromper, Ulysse s\'était présenté sous le nom de « Personne ». Quand Polyphème appela à l\'aide, il cria : « Personne m\'attaque ! »',
+    tip: 'Un colosse : ne te laisse pas impressionner par sa taille.' },
+  { id: 'bigfoot', name: 'Bigfoot', from: 'Amérique du Nord', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'Dans les forêts du nord-ouest de l\'Amérique, on parle d\'un grand singe velu marchant debout : le Bigfoot, ou Sasquatch. Les peuples autochtones le décrivaient bien avant l\'arrivée des Européens. Depuis, des milliers de témoins affirment l\'avoir vu, mais il reste toujours introuvable.',
+    fact: 'Un célèbre film de 1967, tourné en Californie, montre une silhouette poilue qui traverse un ruisseau. On en débat encore aujourd\'hui.',
+    tip: 'Discret mais coriace : un combat classique.' },
+  { id: 'bunyip', name: 'Bunyip', from: 'Australie', reg: 'Océanie', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'Dans les marais et les points d\'eau d\'Australie, les billabongs, se cache le bunyip. Les Aborigènes racontent qu\'il guette la nuit, au bord de l\'eau, et pousse des grognements terribles. Personne ne sait vraiment à quoi il ressemble : chaque région le décrit différemment.',
+    fact: 'Au XIXe siècle, des colons ont exposé des os étranges en affirmant qu\'il s\'agissait d\'un crâne de bunyip.',
+    tip: 'Un combat classique, mais garde l\'œil ouvert : il frappe depuis l\'eau.' },
+  { id: 'mokele', name: 'Mokèlé-mbembé', from: 'Afrique centrale', reg: 'Afrique et Moyen-Orient', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Dans les marais du bassin du Congo vivrait le Mokèlé-mbembé, « celui qui arrête le cours des rivières ». Les pêcheurs le décrivent comme un énorme animal au long cou, plus grand qu\'un éléphant, qui renverse les pirogues. Plusieurs expéditions sont parties à sa recherche, sans jamais le trouver.',
+    fact: 'Certains chasseurs de mystères pensent qu\'il pourrait s\'agir d\'un dinosaure survivant, ce que les scientifiques jugent impossible.',
+    tip: 'Massif comme un colosse : prends ton temps, mot après mot.' },
+  { id: 'manticore', name: 'Manticore', from: 'Perse', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'both',
+    story: 'Venue des légendes perses, la manticore a un corps de lion, un visage humain avec trois rangées de dents, et une queue de scorpion qui lance des dards empoisonnés. Son nom signifie « mangeuse d\'hommes ». Les Grecs l\'ont décrite comme le plus dangereux des animaux des Indes.',
+    fact: 'Elle a été décrite par le médecin grec Ctésias vers 400 avant notre ère, qui avait vécu à la cour du roi de Perse.',
+    tip: 'Aucune faute tolérée : vise juste, comme son dard.' },
+  { id: 'basilic', name: 'Basilic', from: 'Europe médiévale', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'Le basilic est le « petit roi » des serpents. Au Moyen Âge, on disait qu\'il naissait d\'un œuf pondu par un vieux coq et couvé par un crapaud. Son regard tuait sur le coup, son souffle desséchait l\'herbe et fendait les pierres. Seul son propre reflet dans un miroir pouvait le vaincre.',
+    fact: 'Un vrai lézard d\'Amérique du Sud porte son nom : le basilic, capable de courir sur l\'eau.',
+    tip: 'Ne croise pas son regard trop longtemps : 10 secondes par mot.' },
+  { id: 'haetae', name: 'Haetae', from: 'Corée', reg: 'Asie', rar: 'Rare', cond: 'korean', rules: ['classic'], mode: 'both',
+    story: 'Le haetae est une bête gardienne coréenne, mi-lion mi-chien, couverte d\'écailles. Il sait distinguer le juste de l\'injuste et protège du feu. C\'est pourquoi deux statues de haetae gardent l\'entrée du palais Gyeongbokgung, à Séoul, face au mont Gwanak qu\'on disait chargé de feu.',
+    fact: 'Le haetae est aujourd\'hui le symbole officiel de la ville de Séoul.',
+    tip: 'Il n\'apparaît que si tu révises le coréen. Combat classique : sois juste.' },
+  { id: 'jiangshi', name: 'Jiangshi', from: 'Chine', reg: 'Asie', rar: 'Nocturne', cond: 'night', rules: ['chrono'], mode: 'w',
+    story: 'Le jiangshi est un mort raide comme une planche, vêtu d\'une robe de fonctionnaire de la dynastie Qing. Incapable de plier les jambes, il se déplace en sautant, les bras tendus devant lui. Les prêtres taoïstes l\'arrêtent en collant sur son front un talisman de papier jaune couvert de formules écrites.',
+    fact: 'Les films de jiangshi, mélange de kung-fu et de comédie d\'horreur, ont fait fureur à Hong Kong dans les années 1980.',
+    tip: 'Il obéit aux talismans écrits : à vue, la nuit, et vite.' },
+  { id: 'nian', name: 'Nian', from: 'Chine', reg: 'Asie', rar: 'Saisonnier', cond: 'lunarny', rules: ['hydra'], mode: 'both',
+    story: 'Chaque début d\'année, le Nian sortait des montagnes ou de la mer pour dévorer les récoltes et les villageois. Un jour, on découvrit qu\'il avait peur de trois choses : le bruit, le feu et la couleur rouge. Depuis, on fête le Nouvel An avec des pétards, des lanternes et des décorations rouges.',
+    fact: 'En chinois, « fêter le Nouvel An » se dit guo nian, « passer le Nian ».',
+    tip: 'Il n\'apparaît qu\'autour du Nouvel An lunaire, et chaque erreur ajoute un mot.' },
+  { id: 'griffon', name: 'Griffon', from: 'Grèce et Perse', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'Tête, ailes et serres d\'aigle, corps de lion : le griffon réunit le roi des oiseaux et le roi des animaux. Les anciens racontaient qu\'il gardait des mines d\'or dans les montagnes d\'Asie et attaquait sans pitié quiconque s\'en approchait. Au Moyen Âge, il devint un symbole de force et de vigilance.',
+    fact: 'Certains historiens pensent que des fossiles de dinosaures trouvés dans le désert de Gobi ont inspiré la légende.',
+    tip: 'Rapide comme l\'aigle : 10 secondes par mot.' },
+  { id: 'tarasque', name: 'Tarasque', from: 'Provence', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Au bord du Rhône, près de Tarascon, vivait la Tarasque : une tête de lion, une carapace de tortue hérissée de piques, six pattes et une queue de scorpion. Elle dévorait bêtes et voyageurs. Sainte Marthe la dompta avec de l\'eau bénite et une simple ceinture, avant de la ramener en ville comme un animal docile.',
+    fact: 'Chaque dernier week-end de juin, les fêtes de la Tarasque font défiler une Tarasque géante dans les rues de Tarascon.',
+    tip: 'Un monstre de chez toi, solide comme un colosse.' },
+  { id: 'vouivre', name: 'Vouivre', from: 'Jura', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['trick'], mode: 'both',
+    story: 'Dans le Jura et les Alpes, la vouivre est un serpent ailé qui porte sur le front une escarboucle, une pierre précieuse qui brille dans la nuit. Quand elle va se baigner, elle la pose sur la rive. Celui qui ose la voler devient riche… à condition de ne jamais être rattrapé.',
+    fact: 'L\'écrivain Marcel Aymé en a fait l\'héroïne de son roman La Vouivre, en 1943.',
+    tip: 'Elle brille la nuit et brouille les pistes : la langue de réponse change à chaque mot.' },
+  { id: 'cerbere', name: 'Cerbère', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['hydra'], mode: 'both',
+    story: 'Cerbère, le chien à trois têtes, garde l\'entrée des Enfers. Il laisse entrer les morts, mais n\'en laisse jamais ressortir aucun. Pour son douzième et dernier travail, Hercule dut le ramener vivant à la surface, à mains nues. Orphée, lui, l\'endormit simplement avec sa lyre.',
+    fact: 'Le mot « cerbère » est resté en français pour parler d\'un gardien sévère et difficile à passer.',
+    tip: 'Trois têtes à surveiller : chaque erreur ajoute un mot.' },
+  { id: 'anansi', name: 'Anansi', from: 'Afrique de l\'Ouest', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['trick'], mode: 'e',
+    story: 'Anansi est l\'araignée rusée des contes ashantis du Ghana. Petite mais très maligne, elle réussit à obtenir du dieu du ciel Nyame toutes les histoires du monde, en capturant pour lui un python, un léopard et des frelons. Depuis, c\'est elle qui garde les contes, et elle les raconte à qui sait l\'écouter.',
+    fact: 'Avec la traite des esclaves, les histoires d\'Anansi ont voyagé jusqu\'aux Caraïbes, où on les raconte encore.',
+    tip: 'La gardienne des histoires racontées : elle ne se chasse qu\'à l\'oreille, et elle aime tromper.' },
+  { id: 'grootslang', name: 'Grootslang', from: 'Afrique du Sud', reg: 'Afrique et Moyen-Orient', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Au commencement, les dieux créèrent le grootslang, mi-éléphant mi-serpent, si fort et si rusé qu\'ils regrettèrent leur erreur. Ils le séparèrent en deux pour créer les éléphants et les serpents. Mais l\'un d\'eux s\'échappa. Il vit toujours au fond d\'une grotte d\'Afrique du Sud remplie de diamants.',
+    fact: 'Son nom signifie « grand serpent » en afrikaans.',
+    tip: 'Ancien et massif : un colosse à 20 mots.' },
+  { id: 'curupira', name: 'Curupira', from: 'Brésil', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'Le curupira protège la forêt amazonienne. Petit, aux cheveux rouges comme le feu, il a les pieds tournés vers l\'arrière : ses traces mènent toujours dans la mauvaise direction. Les chasseurs qui tuent plus qu\'ils n\'ont besoin se perdent dans la forêt pour ne jamais en revenir.',
+    fact: 'Au Brésil, une loi fait du 17 juillet le « jour de protection des forêts », et le curupira en est souvent le symbole.',
+    tip: 'Vif comme un feu follet : 10 secondes par mot.' },
+  { id: 'lamassu', name: 'Lamassu', from: 'Mésopotamie', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'w',
+    story: 'Corps de taureau, ailes d\'aigle et tête d\'homme barbu : le lamassu gardait les portes des palais assyriens. Ses statues colossales, couvertes d\'inscriptions cunéiformes, éloignaient les esprits mauvais. Vu de face, il semble immobile, et de profil il semble marcher : il a cinq pattes pour qu\'on le voie toujours en entier.',
+    fact: 'On peut voir de vrais lamassus de plus de 4 mètres au musée du Louvre et au British Museum.',
+    tip: 'Gardien des inscriptions : à vue uniquement, et sans la moindre faute.' },
+  { id: 'roussalka', name: 'Roussalka', from: 'Pays slaves', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['fragile'], mode: 'e',
+    story: 'Dans les rivières et les lacs slaves vivent les roussalki, des esprits d\'eau aux longs cheveux verts. Les nuits d\'été, elles chantent et dansent au clair de lune sur les rives. Leur chant est si beau que les voyageurs s\'approchent… et finissent entraînés sous l\'eau.',
+    fact: 'Le compositeur Dvořák en a fait un opéra, Rusalka, dont le « Chant à la lune » est très célèbre.',
+    tip: 'Elle attire par sa voix : à l\'oreille, la nuit, avec une seule vie.' },
+  { id: 'fenrir', name: 'Fenrir', from: 'Scandinavie', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'chrono'], mode: 'both',
+    story: 'Fenrir, fils du dieu Loki, grandissait si vite que les dieux eux-mêmes en eurent peur. Ils l\'enchaînèrent avec Gleipnir, un lien magique fait du bruit des pas d\'un chat, de la barbe d\'une femme et du souffle d\'un poisson. Le dieu Týr y perdit sa main. À la fin du monde, le Ragnarök, Fenrir brisera ses chaînes.',
+    fact: 'Le mardi s\'appelle « Tuesday » en anglais : le jour de Týr, le dieu manchot.',
+    tip: 'Très rare. Un colosse rapide : il faudra tenir les 20 mots, 10 secondes chacun.' },
+  { id: 'garuda', name: 'Garuda', from: 'Inde', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'Garuda est le roi des oiseaux, à la tête d\'aigle et au corps d\'homme doré. Il est la monture du dieu Vishnou. Pour libérer sa mère, il vola aux dieux l\'amrita, le nectar d\'immortalité, et repoussa à lui seul toute leur armée. Il est l\'ennemi juré des serpents, les nagas.',
+    fact: 'La compagnie aérienne nationale d\'Indonésie s\'appelle Garuda, et il figure sur les armoiries du pays.',
+    tip: 'Rapide comme le vent : 10 secondes par mot.' },
+  { id: 'naga', name: 'Naga', from: 'Inde et Asie du Sud-Est', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['hydra'], mode: 'both',
+    story: 'Les nagas sont des serpents divins à plusieurs têtes, gardiens des eaux, des trésors et des temples. Le plus célèbre, Mucalinda, déploya ses sept têtes au-dessus du Bouddha pour le protéger d\'une tempête pendant qu\'il méditait. Ils peuvent être protecteurs… ou terribles quand on les offense.',
+    fact: 'Au Cambodge, les balustrades du temple d\'Angkor Vat sont de longs nagas sculptés.',
+    tip: 'Plusieurs têtes, comme l\'Hydre : chaque erreur ajoute un mot.' },
+  { id: 'quetzalcoatl', name: 'Quetzalcoatl', from: 'Mexique', reg: 'Amériques', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'trick'], mode: 'both',
+    story: 'Quetzalcoatl, le serpent à plumes, est l\'un des plus grands dieux des Aztèques et des Mayas. Il aurait donné aux hommes le maïs, le calendrier et l\'écriture. Selon la légende, il partit un jour vers l\'est sur un radeau de serpents, en promettant de revenir.',
+    fact: 'À Chichén Itzá, au Mexique, l\'ombre du soleil dessine un serpent qui descend l\'escalier de la pyramide aux équinoxes.',
+    tip: 'Très rare. Long et trompeur : 20 mots, avec une langue qui change.' },
+  { id: 'ahuizotl', name: 'Ahuizotl', from: 'Mexique', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['greedy'], mode: 'both',
+    story: 'L\'ahuizotl est un petit animal des lacs aztèques, entre le chien et la loutre, avec une main au bout de la queue. Il guette au bord de l\'eau et attrape les imprudents avec cette main pour les tirer au fond. Pour attirer ses proies, il imite les pleurs d\'un enfant.',
+    fact: 'Un empereur aztèque, oncle du célèbre Moctezuma, portait le nom d\'Ahuitzotl.',
+    tip: 'Il ne lâche rien : chaque mot raté revient.' },
+  { id: 'taniwha', name: 'Taniwha', from: 'Nouvelle-Zélande', reg: 'Océanie', rar: 'Rare', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Chez les Maoris, les taniwha sont de puissants êtres des rivières, des lacs et de la mer. Certains protègent leur tribu et guident les pirogues, d\'autres sont de terribles monstres. Aujourd\'hui encore, on tient compte de leur présence : des routes ont été déviées pour ne pas déranger un taniwha.',
+    fact: 'En 2002, la construction d\'une autoroute en Nouvelle-Zélande a été modifiée par respect pour un taniwha de la rivière Waikato.',
+    tip: 'Puissant gardien des eaux : un colosse à 20 mots.' },
+  { id: 'ammit', name: 'Ammit', from: 'Égypte', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'w',
+    story: 'Dans l\'au-delà égyptien, le cœur du mort était pesé contre une plume, celle de la déesse Maât, la vérité. Si le cœur était trop lourd de mauvaises actions, Ammit, la dévoreuse, à tête de crocodile, corps de lion et arrière d\'hippopotame, le dévorait. L\'âme disparaissait alors pour toujours.',
+    fact: 'La scène de la pesée du cœur figure dans le Livre des Morts, des rouleaux de papyrus placés dans les tombes.',
+    tip: 'Elle juge ce qui est écrit : à vue, et sans la moindre erreur.' },
+  { id: 'bakunawa', name: 'Bakunawa', from: 'Philippines', reg: 'Asie', rar: 'Nocturne', cond: 'fullmoon', rules: ['greedy'], mode: 'both',
+    story: 'Autrefois, le ciel avait sept lunes. Le Bakunawa, un serpent de mer géant, en avala six. Les habitants des Philippines, pour sauver la dernière, frappèrent des casseroles et crièrent si fort que le serpent la recracha. Depuis, chaque éclipse est une nouvelle tentative du Bakunawa.',
+    fact: 'Lors des éclipses, on faisait encore du bruit il n\'y a pas si longtemps aux Philippines pour lui faire lâcher la lune.',
+    tip: 'Il n\'apparaît qu\'à la pleine lune, et chaque erreur le nourrit.' },
+  { id: 'selkie', name: 'Selkie', from: 'Écosse et Irlande', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['fragile'], mode: 'both',
+    story: 'Dans les îles d\'Écosse et d\'Irlande, on raconte que certains phoques peuvent ôter leur peau et prendre forme humaine. Celui qui cache la peau d\'une selkie l\'empêche de retourner à la mer. Mais tôt ou tard, elle la retrouve, et repart pour toujours, sans un regard en arrière.',
+    fact: 'Certaines familles des Orcades affirmaient descendre d\'une selkie, et en voyaient la preuve dans des doigts légèrement palmés.',
+    tip: 'Elle glisse entre les doigts : une seule erreur et elle repart.' },
+  { id: 'simurgh', name: 'Simurgh', from: 'Perse', reg: 'Afrique et Moyen-Orient', rar: 'Légendaire', cond: 'always', rules: ['chrono', 'strict'], mode: 'both',
+    story: 'Le Simurgh est un oiseau immense et très ancien, qui a vu le monde se détruire trois fois. Il vit au sommet du mont Qaf et connaît tous les secrets. Dans le Livre des Rois, il recueille le héros Zal abandonné bébé, l\'élève dans son nid et lui donne trois plumes pour l\'appeler en cas de danger.',
+    fact: 'Dans le poème La Conférence des oiseaux, trente oiseaux partent à sa recherche, et découvrent que « si-morgh » signifie « trente oiseaux ».',
+    tip: 'Très rare. Rapide et exigeant : 10 secondes par mot, sans aucune faute.' },
+  { id: 'bulgasari', name: 'Bulgasari', from: 'Corée', reg: 'Asie', rar: 'Rare', cond: 'korean', rules: ['colossus'], mode: 'both',
+    story: 'Un moine sculpta un jour une petite créature avec des grains de riz. Elle se mit à manger des aiguilles, puis des cuillères, puis tout le fer du royaume, et devint gigantesque. On l\'appela Bulgasari, « celui qu\'on ne peut pas tuer », car ni les flèches ni le feu ne pouvaient l\'arrêter.',
+    fact: 'Un film de monstre nord-coréen de 1985, Pulgasari, a raconté son histoire.',
+    tip: 'Il n\'apparaît que si tu révises le coréen : un colosse de fer.' },
+  { id: 'chimere', name: 'Chimère', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['hydra'], mode: 'both',
+    story: 'Lion devant, chèvre au milieu, serpent à la queue : la Chimère crachait le feu et ravageait la Lycie. Le héros Bellérophon, monté sur Pégase, l\'attaqua du haut du ciel. Il glissa un morceau de plomb au bout de sa lance : le souffle brûlant du monstre fit fondre le métal, qui l\'étouffa.',
+    fact: 'Aujourd\'hui, « une chimère » désigne un rêve impossible, et en biologie un être formé de cellules de deux origines.',
+    tip: 'Trois têtes à la fois : chaque erreur ajoute un mot.' },
+  { id: 'lionnemee', name: 'Lion de Némée', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'both',
+    story: 'Le lion de Némée terrorisait la région d\'Argos. Sa peau dorée ne pouvait être percée par aucune arme : flèches, épées et lances rebondissaient. Pour son premier travail, Hercule l\'enferma dans sa caverne et l\'étrangla à mains nues. Il porta ensuite sa peau comme une armure invincible.',
+    fact: 'Les Grecs pensaient que le lion de Némée était devenu la constellation du Lion.',
+    tip: 'Aucune faille dans sa peau : aucune faute permise.' },
+  { id: 'pegase', name: 'Pégase noir', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'Né du sang de Méduse, Pégase est un cheval ailé que nul ne pouvait monter. Bellérophon ne l\'apprivoisa qu\'avec une bride d\'or offerte par la déesse Athéna. Mais lorsqu\'il voulut voler jusqu\'à l\'Olympe, Zeus envoya un taon piquer l\'animal, qui désarçonna son cavalier. Celui que tu croises est une version sauvage et sombre, jamais domptée.',
+    fact: 'D\'un coup de sabot, Pégase aurait fait jaillir une source sur le mont Hélicon : l\'Hippocrène, la source des poètes.',
+    tip: 'Il fend le ciel : 10 secondes par mot.' },
+  { id: 'jormungandr', name: 'Jörmungandr', from: 'Scandinavie', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['colossus', 'hydra'], mode: 'both',
+    story: 'Jörmungandr, autre enfant de Loki, fut jeté à la mer par Odin. Il y grandit tant qu\'il fit le tour du monde et se mordit la queue. Le dieu Thor, qui le pêcha un jour avec une tête de bœuf comme appât, est son ennemi juré. Au Ragnarök, ils s\'entretueront.',
+    fact: 'L\'image d\'un serpent qui se mord la queue s\'appelle un ouroboros, symbole d\'éternité dans de nombreuses cultures.',
+    tip: 'Très rare. Le plus long des serpents : colosse et hydre à la fois.' },
+  { id: 'draugr', name: 'Draugr', from: 'Scandinavie', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['greedy'], mode: 'both',
+    story: 'Les draugar sont des guerriers vikings morts qui refusent de quitter leur tombe et leur trésor. Ils sont plus forts qu\'à leur mort, lourds comme des bœufs, et peuvent grandir à volonté. Dans la saga de Grettir, le héros affronte le draugr Glámr dans une ferme, par une nuit de pleine lune.',
+    fact: 'Pour empêcher un mort de revenir, les Vikings posaient parfois des ciseaux ouverts sur sa poitrine.',
+    tip: 'Il ne sort que la nuit, et chaque erreur lui rend des forces.' },
+  { id: 'nuckelavee', name: 'Nuckelavee', from: 'Écosse (Orcades)', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['fragile', 'chrono'], mode: 'both',
+    story: 'Aux Orcades, on craignait le Nuckelavee, le plus terrible des démons de la mer : un cheval et un cavalier soudés en un seul monstre, à l\'œil unique rouge comme le feu. Son souffle flétrissait les récoltes et rendait le bétail malade. Seule l\'eau douce pouvait l\'arrêter : il ne pouvait pas traverser une rivière.',
+    fact: 'Il ne quittait la mer qu\'en été. En hiver, une autre créature, la Mither o\' the Sea, le tenait enfermé.',
+    tip: 'Rapide et implacable : une seule vie, 10 secondes par mot.' },
+  { id: 'leshy', name: 'Leshy', from: 'Russie', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['trick'], mode: 'both',
+    story: 'Le leshy est le maître de la forêt slave. Il peut être grand comme un arbre ou petit comme un brin d\'herbe, et adore égarer les promeneurs en les faisant tourner en rond. Pour retrouver son chemin, il fallait retourner ses vêtements à l\'envers et remettre ses chaussures au mauvais pied.',
+    fact: 'Les chasseurs russes lui laissaient du pain et du sel à l\'orée du bois pour obtenir sa protection.',
+    tip: 'Il fait perdre le nord : la langue de réponse change à chaque mot.' },
+  { id: 'kitsune', name: 'Kitsune', from: 'Japon', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['trick'], mode: 'both',
+    story: 'Au Japon, le renard kitsune gagne une queue tous les cent ans, jusqu\'à neuf. Messager de la divinité Inari, il peut être protecteur. Mais il aime aussi jouer des tours : il fait danser des flammes bleues, les kitsune-bi, pour égarer les voyageurs la nuit.',
+    fact: 'Plus de 30 000 sanctuaires d\'Inari au Japon sont gardés par des statues de renards.',
+    tip: 'Le renard trompe son monde : la langue de réponse change à chaque mot.' },
+  { id: 'jorogumo', name: 'Jorōgumo', from: 'Japon', reg: 'Asie', rar: 'Nocturne', cond: 'night', rules: ['greedy'], mode: 'both',
+    story: 'Quand une araignée atteint quatre cents ans, elle devient une jorōgumo et peut prendre l\'apparence d\'une femme élégante. Elle attire les voyageurs dans une maison isolée, joue du biwa pour les endormir, puis les ligote dans ses fils de soie. On la reconnaît à son reflet : dans l\'eau, on voit l\'araignée.',
+    fact: 'Près de la cascade de Jōren, à Izu, une légende raconte qu\'un bûcheron vit ses fils s\'enrouler autour de son pied.',
+    tip: 'Elle tisse sa toile la nuit, et chaque erreur la renforce.' },
+  { id: 'rakshasa', name: 'Rakshasa', from: 'Inde', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'both',
+    story: 'Les rakshasas sont des démons de la mythologie hindoue, capables de changer d\'apparence à volonté. Leur roi, Ravana, aux dix têtes, enleva la princesse Sita. Le prince Rama, aidé du dieu-singe Hanuman et d\'une armée de singes, construisit un pont jusqu\'à l\'île de Lanka pour la délivrer.',
+    fact: 'Chaque année en Inde, lors de la fête de Dussehra, on brûle d\'immenses effigies de Ravana.',
+    tip: 'Rusé et précis : aucune faute ne sera pardonnée.' },
+  { id: 'thunderbird', name: 'Thunderbird', from: 'Amérique du Nord', reg: 'Amériques', rar: 'Saisonnier', cond: 'summer', rules: ['chrono'], mode: 'e',
+    story: 'Pour de nombreux peuples autochtones d\'Amérique du Nord, l\'oiseau-tonnerre est un être immense et sacré. Le battement de ses ailes fait gronder le tonnerre, et l\'éclair jaillit de ses yeux. Il combat les serpents des profondeurs et apporte la pluie qui nourrit la terre.',
+    fact: 'Il est souvent sculpté au sommet des mâts totémiques de la côte nord-ouest du Pacifique.',
+    tip: 'On l\'entend avant de le voir : à l\'oreille, en été, et vite.' },
+  { id: 'raiju', name: 'Raijū', from: 'Japon', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'e',
+    story: 'Le raijū, la « bête du tonnerre », accompagne Raijin, le dieu de la foudre. Pendant les orages, il bondit d\'arbre en arbre sous forme d\'éclair et laisse des traces de griffes sur les troncs. Par beau temps, il dort en boule… de préférence dans le nombril des gens.',
+    fact: 'C\'est pour ça qu\'au Japon, on conseille aux enfants de cacher leur nombril pendant les orages.',
+    tip: 'Le tonnerre s\'écoute : à l\'oreille uniquement, et à la vitesse de l\'éclair.' },
+  { id: 'mapinguari', name: 'Mapinguari', from: 'Amazonie', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Au cœur de l\'Amazonie rôde le mapinguari, une bête énorme couverte de poils roux, à l\'œil unique et aux griffes immenses. Sa peau est si dure qu\'aucune flèche ne la traverse. On le repère à son odeur épouvantable et à ses cris, qui ressemblent à ceux d\'un chasseur perdu.',
+    fact: 'Certains scientifiques pensent que la légende garde le souvenir des paresseux géants, éteints il y a environ 10 000 ans.',
+    tip: 'Lent mais très résistant : un colosse.' },
+  { id: 'impundulu', name: 'Impundulu', from: 'Afrique australe', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'e',
+    story: 'Chez les Zoulous et les Xhosas, l\'impundulu est l\'oiseau-éclair. Noir et blanc, grand comme un homme, il plonge du ciel pendant les orages et fait jaillir la foudre de ses ailes. On disait que là où la foudre tombait, l\'oiseau avait pondu un œuf, qu\'il fallait trouver et détruire.',
+    fact: 'Les guérisseurs traditionnels étaient appelés pour déterrer « l\'œuf de foudre » après un orage.',
+    tip: 'On l\'entend gronder : à l\'oreille, et vite.' },
+  { id: 'tikbalang', name: 'Tikbalang', from: 'Philippines', reg: 'Asie', rar: 'Commun', cond: 'always', rules: ['trick'], mode: 'both',
+    story: 'Le tikbalang a une tête et des sabots de cheval sur un corps d\'homme immense, aux genoux plus hauts que sa tête quand il s\'accroupit. Il égare les voyageurs dans les montagnes en les faisant tourner en rond. Pour s\'en défaire, il faut retourner sa chemise et demander poliment le passage.',
+    fact: 'Aux Philippines, quand il pleut sous le soleil, on dit qu\'un tikbalang se marie.',
+    tip: 'Il brouille les chemins : la langue de réponse change à chaque mot.' },
+  { id: 'ninkinanka', name: 'Ninki Nanka', from: 'Afrique de l\'Ouest', reg: 'Afrique et Moyen-Orient', rar: 'Rare', cond: 'always', rules: ['greedy'], mode: 'both',
+    story: 'Dans les marais de Gambie et du Sénégal vit le Ninki Nanka, un dragon d\'eau douce au corps de crocodile et à la tête couronnée d\'une crête. Ses écailles brillent comme un miroir. On dit que celui qui le voit tombe gravement malade : mieux vaut l\'entendre que le croiser.',
+    fact: 'En 2006, une expédition britannique est partie en Gambie à sa recherche, sans succès.',
+    tip: 'Chaque erreur le renforce : le mot raté revient.' },
+  { id: 'yacumama', name: 'Yacumama', from: 'Amazonie', reg: 'Amériques', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'La yacumama, la « mère des eaux », est un anaconda colossal qui vit à l\'embouchure de l\'Amazone et dans les lacs de la forêt. On dit qu\'elle peut aspirer tout ce qui passe à moins de cent pas. Avant d\'entrer dans un lac inconnu, les pêcheurs soufflaient dans une conque pour l\'avertir.',
+    fact: 'L\'anaconda vert, qui a inspiré la légende, est le plus lourd serpent du monde.',
+    tip: 'Massive comme la rivière : un colosse à 20 mots.' },
+  { id: 'gargouille', name: 'Gargouille', from: 'France', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['strict'], mode: 'w',
+    story: 'À Rouen, au VIIe siècle, un dragon appelé la Gargouille crachait des flots d\'eau et terrorisait la ville. Saint Romain le captura et on brûla son corps, mais sa tête et son cou, durcis par son propre feu, résistèrent. On les fixa sur une église, et depuis, les cathédrales sont couvertes de gargouilles.',
+    fact: 'Les vraies gargouilles servent de gouttières : elles évacuent l\'eau de pluie par leur bouche. Leur nom vient de « gargouiller ».',
+    tip: 'Figée dans la pierre gravée : à vue, la nuit, et sans faute.' },
+  { id: 'drac', name: 'Drac', from: 'Provence', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['trick'], mode: 'both',
+    story: 'À Beaucaire, sur le Rhône, le Drac vivait au fond du fleuve. Un jour, il entraîna une lavandière sous l\'eau pour qu\'elle allaite son fils. Elle y resta sept ans, et en revenant, elle pouvait voir le Drac quand il se promenait en ville sous forme humaine. Il lui creva l\'œil qui le voyait.',
+    fact: 'Chaque été, les fêtes de Beaucaire font encore défiler un Drac géant.',
+    tip: 'Il change d\'apparence : la langue de réponse change à chaque mot.' },
+  { id: 'gevaudan', name: 'Bête du Gévaudan', from: 'France', reg: 'Europe', rar: 'Nocturne', cond: 'night', rules: ['greedy'], mode: 'both',
+    story: 'Entre 1764 et 1767, une bête mystérieuse attaqua plus d\'une centaine de personnes dans le Gévaudan, l\'actuelle Lozère. Le roi Louis XV envoya ses meilleurs chasseurs. Un grand loup fut abattu, mais les attaques continuèrent, jusqu\'à ce qu\'un chasseur local, Jean Chastel, tue un énorme animal en 1767.',
+    fact: 'Personne ne sait encore aujourd\'hui ce qu\'était vraiment la Bête : loup, hybride, animal exotique échappé ?',
+    tip: 'Elle rôde la nuit et ne lâche pas sa proie : le mot raté revient.' },
+  { id: 'pixiu', name: 'Pixiu', from: 'Chine', reg: 'Asie', rar: 'Rare', cond: 'always', rules: ['strict'], mode: 'both',
+    story: 'Le pixiu est une bête céleste chinoise, mi-lion mi-dragon, avec une corne et de petites ailes. Il se nourrit d\'or et d\'argent. On raconte qu\'ayant offensé l\'Empereur céleste, il fut puni : il peut tout avaler, mais plus rien ne ressort. C\'est pourquoi il est devenu le gardien des richesses.',
+    fact: 'En Chine, de nombreux commerçants posent une statuette de pixiu près de leur caisse, tournée vers la porte.',
+    tip: 'Rien ne lui échappe : aucune faute permise.' },
+  { id: 'biche', name: 'Biche de Cérynie', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['chrono'], mode: 'both',
+    story: 'La biche de Cérynie, aux bois d\'or et aux sabots de bronze, était consacrée à la déesse Artémis. Elle courait si vite qu\'aucune flèche ne pouvait l\'atteindre. Pour son troisième travail, Hercule la poursuivit pendant une année entière, jusqu\'au bout du monde, avant de la capturer sans la blesser.',
+    fact: 'Les biches n\'ont normalement pas de bois : c\'est ce qui rendait celle-ci si extraordinaire.',
+    tip: 'La plus rapide de toutes : 10 secondes par mot.' },
+  { id: 'sanglier', name: 'Sanglier d\'Érymanthe', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Ce sanglier gigantesque ravageait les champs autour du mont Érymanthe. Pour son quatrième travail, Hercule devait le ramener vivant. Il le poussa à grands cris dans la neige épaisse jusqu\'à ce que la bête s\'enlise, puis la chargea sur ses épaules. Le roi Eurysthée eut si peur qu\'il se cacha dans une jarre.',
+    fact: 'Les défenses du sanglier auraient été conservées dans un temple d\'Apollon, en Grèce.',
+    tip: 'Une charge de colosse : tiens bon jusqu\'au bout.' },
+  { id: 'stymphale', name: 'Oiseaux du Stymphale', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['hydra'], mode: 'e',
+    story: 'Autour du lac Stymphale vivaient des oiseaux aux plumes de bronze, qu\'ils lançaient comme des flèches. Ils étaient si nombreux qu\'ils cachaient le soleil. Pour son sixième travail, Hercule les fit s\'envoler avec des crotales de bronze, des castagnettes forgées par Héphaïstos, puis les abattit un à un.',
+    fact: 'C\'est par le bruit qu\'Hercule les a vaincus : une victoire à l\'oreille.',
+    tip: 'On les chasse au son, à l\'oreille. Une nuée : chaque erreur en ajoute un.' },
+  { id: 'taureau', name: 'Taureau de Crète', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['colossus'], mode: 'both',
+    story: 'Poséidon avait offert au roi Minos un magnifique taureau blanc sorti de la mer, pour qu\'il le lui sacrifie. Mais Minos le garda pour lui. Furieux, le dieu rendit l\'animal fou de rage. Pour son septième travail, Hercule le dompta à mains nues et le ramena en Grèce sur son dos, à travers la mer.',
+    fact: 'Ce taureau serait le père du Minotaure.',
+    tip: 'Force brute : un colosse à 20 mots.' },
+  { id: 'juments', name: 'Juments de Diomède', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['greedy'], mode: 'both',
+    story: 'Le roi Diomède, en Thrace, possédait quatre juments sauvages qu\'il nourrissait de chair humaine. Elles étaient enchaînées à des mangeoires de bronze. Pour son huitième travail, Hercule les captura, et les calma en leur donnant leur propre maître à manger. Elles devinrent alors dociles.',
+    fact: 'Selon la légende, la célèbre lignée du cheval d\'Alexandre le Grand, Bucéphale, descendrait de ces juments.',
+    tip: 'Elles sont insatiables : chaque mot raté revient.' },
+  { id: 'geryon', name: 'Géryon', from: 'Grèce', reg: 'Europe', rar: 'Rare', cond: 'always', rules: ['hydra'], mode: 'both',
+    story: 'Au bout du monde, sur l\'île d\'Érythie, vivait Géryon, un géant à trois corps soudés à la taille, gardien d\'un troupeau de bœufs rouges. Pour son dixième travail, Hercule traversa la mer dans la coupe d\'or du Soleil, tua le chien Orthros et transperça les trois corps de Géryon d\'une seule flèche.',
+    fact: 'En route, Hercule aurait dressé deux colonnes de chaque côté du détroit de Gibraltar : les « colonnes d\'Hercule ».',
+    tip: 'Trois guerriers en un : chaque erreur ajoute un mot.' },
+  { id: 'orthros', name: 'Orthros', from: 'Grèce', reg: 'Europe', rar: 'Commun', cond: 'always', rules: ['classic'], mode: 'both',
+    story: 'Orthros, le chien à deux têtes, était le frère de Cerbère. Il gardait le troupeau de bœufs rouges du géant Géryon avec le berger Eurytion. Quand Hercule arriva sur l\'île, Orthros se jeta sur lui, mais le héros l\'abattit d\'un seul coup de sa massue.',
+    fact: 'Il était aussi le père du Sphinx et du lion de Némée, selon certains auteurs grecs.',
+    tip: 'Deux têtes, mais un combat classique.' },
+  { id: 'ladon', name: 'Ladon', from: 'Grèce', reg: 'Europe', rar: 'Légendaire', cond: 'always', rules: ['strict', 'colossus'], mode: 'both',
+    story: 'Dans le jardin des Hespérides, au bout du monde, un arbre portait des pommes d\'or offertes à la déesse Héra. Le dragon Ladon, qui ne dormait jamais, s\'enroulait autour de son tronc pour les garder. Pour son onzième travail, Hercule devait rapporter ces pommes, malgré le gardien aux yeux toujours ouverts.',
+    fact: 'Après sa mort, Héra l\'aurait placé dans le ciel : c\'est la constellation du Dragon.',
+    tip: 'Très rare. 20 mots sans la moindre faute : le vrai défi des Douze Travaux.' }
 ];
+// hidden chance of appearing, by rarity (relative weights)
+const RATE = { Commun: 5, Rare: 2.5, Nocturne: 4, Saisonnier: 5, Légendaire: 0.6 };
+BEASTS.forEach(b => { b.has = true; b.rate = RATE[b.rar]; });
+const captured = e => ((e?.wins || 0) + (e?.winsE || 0)) > 0;
+const mastered = (be, e) => be.mode === 'both' ? !!(e?.wins && e?.winsE) : captured(e);
 const RULES = {
   classic: 'Combat classique : 10 mots, 3 vies.',
   fragile: 'Fragile : une seule vie.',
@@ -831,8 +1181,7 @@ const RULES = {
   strict: 'Implacable : aucune faute de frappe tolérée.',
   trick: 'Trompeur : la langue de réponse change à chaque mot.'
 };
-const REGION = from => /Japon|Corée|Himalaya|Chine|Inde/.test(from) ? 'Asie' : /Égypte|Arabie|Afrique|Perse/.test(from) ? 'Afrique et Moyen-Orient' : /^Amérique/.test(from) ? 'Amériques' : /Partout/.test(from) ? 'Monde entier' : 'Europe';
-const REGIONS = ['Europe', 'Asie', 'Amériques', 'Afrique et Moyen-Orient', 'Monde entier'];
+const REGIONS = ['Europe', 'Asie', 'Amériques', 'Afrique et Moyen-Orient', 'Océanie', 'Monde entier'];
 const RARS = ['Commun', 'Rare', 'Nocturne', 'Saisonnier', 'Légendaire'];
 const RULE_NAMES = { classic: 'Classique · 10 mots, 3 vies', colossus: 'Colosse · 20 mots, 5 vies', fragile: 'Fragile · 1 vie', chrono: 'Chrono · 10 s par mot', hydra: 'Hydre · gagne des mots', greedy: 'Vorace · récupère de la vie', strict: 'Implacable · aucune faute', trick: 'Trompeur · langue qui change' };
 const RAR_COL = { Commun: '#6b7f72', Rare: '#3b82f6', Nocturne: '#6d3fb0', Saisonnier: '#d97706', Légendaire: '#b91c1c' };
@@ -843,7 +1192,7 @@ const moonAge = t => { const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 
 // if the clock went back in time, special appearances are blocked
 const clockOk = () => Date.now() >= (cfg.stats.maxSeen || 0) - 3600000;
 function beastCan(b) {
-  if (!b.has) return false;
+  if (b.mode !== 'both' && b.mode !== (ui.huntTrack || 'w')) return false;
   const now = new Date(), h = now.getHours(), m = now.getMonth(), d = now.getDate();
   if (b.cond === 'always') return true;
   if (b.cond === 'korean') return cfg.filt.on.some(isKorean);
@@ -855,6 +1204,8 @@ function beastCan(b) {
   if (b.cond === 'winternight') return winter && night;
   if (b.cond === 'halloween') return (m === 9 && d >= 25) || (m === 10 && d <= 1);
   if (b.cond === 'december') return m === 11;
+  if (b.cond === 'summer') return m >= 5 && m <= 7;
+  if (b.cond === 'lunarny') { const t = midnight(Date.now()); return SEOLLAL.some(x => { const [y, mo, dd] = x.split('-').map(Number); return Math.abs(new Date(y, mo - 1, dd).getTime() - t) <= 3.5 * DAY; }); }
   return false;
 }
 // weighted draw among the creatures that can appear now, except the one that just fled
@@ -867,8 +1218,9 @@ function drawBeast() {
 }
 function bossPool(n) {
   const ok = askable(), c = [...words.values()].filter(ok);
-  const hard = c.filter(w => w.ko > 0).sort((a, b) => (b.ko - b.ok * .3) - (a.ko - a.ok * .3) || a.lvl - b.lvl);
-  const rest = c.filter(w => !w.ko).sort((a, b) => a.lvl - b.lvl || Math.random() - .5);
+  const K = w => ST(w).ko || 0, O = w => ST(w).ok || 0;
+  const hard = c.filter(w => K(w) > 0).sort((a, b) => (K(b) - O(b) * .3) - (K(a) - O(a) * .3) || lvlOf(a) - lvlOf(b));
+  const rest = c.filter(w => !K(w)).sort((a, b) => lvlOf(a) - lvlOf(b) || Math.random() - .5);
   const top = [...hard, ...rest].slice(0, n * 2);
   for (let i = top.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [top[i], top[j]] = [top[j], top[i]]; }
   return { pick: top.slice(0, n), spare: [...hard, ...rest].filter(w => !top.slice(0, n).includes(w)), total: c.length };
@@ -879,7 +1231,7 @@ function bossQ() {
   const w = words.get(b.ids[b.i]);
   if (!w) return null;
   const S = b.rules.includes('trick') ? uniq(['fr', ...cfg.filt.on]).sort(() => Math.random() - .5) : answerLangs();
-  let qs = questions(w, S, cpIndex());
+  let qs = qsFor(w, S, cpIndex());
   if (b.rules.includes('trick') && qs.length > 1) { const al = qs[Math.floor(Math.random() * qs.length)].al; qs = qs.filter(q => q.al === al); }
   const q = qs.length ? { id: w.id, ...qs[Math.floor(Math.random() * qs.length)] } : { id: w.id, prompt: w.en, pl: wLang(w), answers: w.fr, al: 'fr' };
   if (b.rules.includes('chrono')) b.deadline = Date.now() + CHRONO_S * 1000;
@@ -889,7 +1241,7 @@ let bossTimer = null;
 function stopBossTimer() { clearInterval(bossTimer); bossTimer = null; }
 function bossTick() {
   const b = ui.boss;
-  if (!b || b.state !== 'run' || !b.rules.includes('chrono') || view !== 'rev' || ui.mode !== 'boss') return stopBossTimer();
+  if (!b || b.state !== 'run' || !b.rules.includes('chrono') || view !== 'hunt') return stopBossTimer();
   if (b.phase !== 'ask') return;
   const left = Math.max(0, (b.deadline - Date.now()) / 1000), t = $('#btime'), bar = $('#tbar');
   if (t) t.textContent = Math.ceil(left);
@@ -929,8 +1281,9 @@ function bossEnd(win) {
     if (b.lives === 1 && b.maxLives > 1) award('phenix');
     if (st.bossLost) award('vengeance');
     st.bossLost = false;
-    b.newBeast = !e.wins;
-    e.wins = (e.wins || 0) + 1; if (!e.first) e.first = Date.now();
+    b.newBeast = !captured(e);
+    if ((ui.huntTrack || 'w') === 'e') e.winsE = (e.winsE || 0) + 1; else e.wins = (e.wins || 0) + 1;
+    if (!e.first) e.first = Date.now();
     confetti();
   } else { st.bossLost = true; st.fled = b.beast; e.lost = (e.lost || 0) + 1; }
   bs[b.beast] = e; cfg.beasts = bs;
@@ -968,11 +1321,19 @@ function bossAnswer(val, timeout) {
   celebrate();
 }
 const beastImg = (be, cls) => `<img class="${cls || 'beast'}" src="boss-${be.id}.webp" alt="${esc(be.name)}">`;
+const modeIcon = be => be.mode === 'w' ? ' · vue' : be.mode === 'e' ? ' · oreille' : '';
 const rarChip = be => `<span class="rar" style="--rc:${RAR_COL[be.rar]}">${esc(be.rar)}</span>`;
 const hearts = (n, max) => Array.from({ length: max }, (_, i) => `<svg width="20" height="18" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21 2.5 11.5A5.5 5.5 0 0 1 12 4a5.5 5.5 0 0 1 9.5 7.5z" fill="${i < n ? 'var(--red)' : 'none'}" stroke="var(--red)" stroke-width="2"/></svg>`).join('');
+// monsters tab: choose to hunt at the plume or at the oreille
+function renderHunt() {
+  if (!words.size) return `<div class="empty"><h2>Pas encore de mots</h2><p>Ajoute des mots pour partir en chasse.</p><button class="btn" data-a="goadd">Ajouter des mots</button></div>`;
+  const t = ui.huntTrack || 'w';
+  const bar = `<div class="modes">${[['w', 'Chasse à vue'], ['e', 'Chasse à l\'oreille']].map(([k, l]) => `<button class="mode" data-a="hunttrack" data-k="${k}" aria-pressed="${t === k}">${l}</button>`).join('')}</div>`;
+  return bar + renderFilters() + renderBoss();
+}
 function renderBoss() {
   const b = ui.boss || (ui.boss = { state: 'ready' });
-  const got = BEASTS.filter(x => x.has && (cfg.beasts || {})[x.id]?.wins).length, tot = BEASTS.filter(x => x.has).length;
+  const got = BEASTS.filter(x => captured((cfg.beasts || {})[x.id])).length, tot = BEASTS.length;
   const bestBtn = `<button class="btn ghost" data-a="bestiary">Bestiaire ${got}/${tot}</button>`;
   if (b.state === 'ready') {
     const fled = cfg.stats.fled && beast(cfg.stats.fled);
@@ -980,7 +1341,7 @@ function renderBoss() {
   }
   const be = beast(b.beast);
   if (b.state === 'intro') {
-    const known = (cfg.beasts || {})[be.id]?.wins;
+    const known = captured((cfg.beasts || {})[be.id]);
     return `<div class="card done game beastcard">${beastImg(be, 'beast big appear')}<p class="hint" style="margin:0">Une créature apparaît !</p><b class="big">${esc(be.name)}</b><p style="margin:0">${rarChip(be)} <span class="hint">${esc(be.from)}</span></p>${known ? '<p class="hint">Déjà dans ton bestiaire.</p>' : '<p class="hint"><b>Nouvelle créature !</b></p>'}<div class="rules">${b.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><div class="row center"><button class="btn" data-a="bossfight">Combattre</button></div></div>`;
   }
   if (b.state === 'end') {
@@ -995,7 +1356,7 @@ function renderBoss() {
     <div class="arena">${beastImg(be, 'beast mid' + (res && q.ok ? ' hit' : ''))}<div class="arena-top"><b>${esc(be.name)}</b><div class="lives">${hearts(b.lives, b.maxLives)}</div></div>${hp}</div>
     <div class="dir" style="margin-top:10px"><span class="flag">${esc(flagOf(q))}</span><span>Mot ${b.i + 1}/${n}${chrono && !res ? ` · <b id="btime">${left}</b> s` : ''}</span></div>
     ${chrono && !res ? `<div class="tbar"><i id="tbar" style="width:${left / CHRONO_S * 100}%"></i></div>` : ''}
-    <div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>${sayBtn(q.prompt[0], q.pl)}
+    ${promptBox(q, 'b' + b.i + q.id, res)}
     ${res ? (q.timeout ? `<div class="flash ko">Trop lent ! La réponse était <b>${esc(q.answers.join(' ou '))}</b></div>` : resultBox(q, q.ok)) : ''}
     <form id="bf" autocomplete="off" style="margin-top:14px">${answerInput(q, res ? (b.lives <= 0 ? 'Entrée pour voir le résultat' : 'Entrée pour continuer') : 'En ' + langName(q.al) + '…', res ? 'next' : 'done')}<div class="row"><button class="btn grow" type="submit">${res ? (b.lives <= 0 || b.i + 1 >= n ? 'Voir le résultat' : 'Continuer') : 'Attaquer'}</button></div></form>
   </div>`;
@@ -1004,21 +1365,24 @@ function renderBoss() {
 /* bestiary: every creature, numbered; "?" if never met, silhouette if met but not beaten */
 function renderBest() {
   const list = BEASTS.filter(x => x.has), bs = cfg.beasts || {};
-  const got = list.filter(x => bs[x.id]?.wins).length;
+  const got = list.filter(x => captured(bs[x.id])).length, mast = list.filter(x => mastered(x, bs[x.id])).length;
   const card = be => {
     const e = bs[be.id] || {}, num = String(list.indexOf(be) + 1).padStart(3, '0');
     if (!e.seen) return `<button class="bcard" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}</span><div class="bq">?</div><b>???</b></button>`;
-    return `<button class="bcard${e.wins ? ' on' : ''}" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}</span>${beastImg(be, 'bimg2' + (e.wins ? '' : ' locked'))}<b>${esc(be.name)}</b>${e.wins ? rarChip(be) : '<span class="hint">Pas encore vaincu</span>'}</button>`;
+    const c = captured(e), m = mastered(be, e);
+    return `<button class="bcard${c ? ' on' : ''}${m ? ' mast' : ''}" data-a="beast" data-k="${be.id}"><span class="num">N° ${num}${modeIcon(be)}</span>${beastImg(be, 'bimg2' + (c ? '' : ' locked'))}<b>${esc(be.name)}</b>${c ? rarChip(be) : '<span class="hint">Pas encore vaincu</span>'}</button>`;
   };
   // sorting: by number, origin, rarity or type of fight (a creature with two rules is in both groups)
   const sort = ui.bestSort || 'num';
-  const groups = sort === 'origin' ? REGIONS.map(r => [r, list.filter(b => REGION(b.from) === r)])
+  const groups = sort === 'origin' ? REGIONS.map(r => [r, list.filter(b => b.reg === r)])
     : sort === 'rar' ? RARS.map(r => [r, list.filter(b => b.rar === r)])
     : sort === 'rule' ? Object.keys(RULE_NAMES).map(r => [RULE_NAMES[r], list.filter(b => b.rules.includes(r))])
     : [['', list]];
-  const cards = groups.filter(g => g[1].length).map(([t, l]) => `${t ? `<h3 class="bgh">${esc(t)} <span class="note">${l.filter(b => bs[b.id]?.wins).length}/${l.length}</span></h3>` : ''}<div class="bgrid">${l.map(card).join('')}</div>`).join('');
+  const cards = groups.filter(g => g[1].length).map(([t, l]) => `${t ? `<h3 class="bgh">${esc(t)} <span class="note">${l.filter(b => captured(bs[b.id])).length}/${l.length}</span></h3>` : ''}<div class="bgrid">${l.map(card).join('')}</div>`).join('');
   const sorts = [['num', 'Numéro'], ['origin', 'Origine'], ['rar', 'Rareté'], ['rule', 'Type de combat']].map(([k, n]) => `<button class="chip" data-a="bestsort" data-k="${k}" aria-pressed="${sort === k}">${n}</button>`).join('');
-  return `<section><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Bestiaire <span class="note">${got}/${list.length}</span></h2><button class="btn ghost" data-a="bestback">Retour</button></div>
+  return `<section><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Bestiaire</h2><button class="btn ghost" data-a="bestback">Retour</button></div>
+    <div class="bcount"><div><b>${got}/${list.length}</b><span>capturées</span></div><div><b>${mast}/${list.length}</b><span>maîtrisées</span></div></div>
+    <p class="note" style="margin-top:0">Une créature est <b>capturée</b> dès ta première victoire, et <b>maîtrisée</b> quand tu l'as battue à vue et à l'oreille (ou dans son seul mode pour celles qui ne se chassent qu'à vue ou qu'à l'oreille).</p>
     <p class="note">Chaque créature battue rejoint ton bestiaire. Certaines sont rares, d'autres ne sortent que la nuit, à la pleine lune ou à certaines périodes de l'année.</p>
     <div class="fl" style="margin:8px 0 4px">${sorts}</div>
     ${cards}</section>${renderBeastView()}`;
@@ -1030,9 +1394,16 @@ function renderBeastView() {
   const date = t => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
   let body;
   if (!e.seen) body = `<div class="q">?</div><b class="big2">N° ${num} · ???</b><p>Tu n'as pas encore croisé cette créature. Continue la chasse !</p>`;
-  else if (!e.wins) body = `${beastImg(be, 'locked')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)}</p><p>Rencontrée, mais pas encore vaincue.</p>`;
-  else body = `${beastImg(be, '')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)} · ${rarChip(be)}</p><p class="ltxt">${esc(be.txt)}</p><div class="rules">${be.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><p>${plural(e.wins, 'victoire', 'victoires')} · première le ${date(e.first)}</p>`;
-  return `<div class="bview" data-a="bclose"><div>${body}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
+  else if (!captured(e)) body = `${beastImg(be, 'locked')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)}</p><p>Rencontrée, mais pas encore vaincue.</p>`;
+  else {
+    const seal = (k, n, on) => `<span class="seal${on ? ' on' : ''}">Vaincu ${n}</span>`;
+    const seals = be.mode === 'both' ? seal('w', 'à vue', e.wins) + seal('e', 'à l\'oreille', e.winsE) : be.mode === 'w' ? seal('w', 'à vue', e.wins) : seal('e', 'à l\'oreille', e.winsE);
+    body = `${beastImg(be, '')}<b class="big2">${esc(be.name)}</b><p>N° ${num} · ${esc(be.from)} · ${rarChip(be)}</p>
+      <div class="seals">${seals}</div>${be.mode !== 'both' ? `<p class="hint">Ne se chasse qu'${be.mode === 'w' ? 'à vue' : 'à l\'oreille'}.</p>` : ''}
+      <div class="lore"><h4>La légende</h4><p>${esc(be.story)}</p><h4>Le savais-tu ?</h4><p>${esc(be.fact)}</p><h4>Pour le vaincre</h4><p>${esc(be.tip)}</p></div>
+      <div class="rules">${be.rules.map(r => `<span>${esc(RULES[r])}</span>`).join('')}</div><p class="hint">${plural((e.wins || 0) + (e.winsE || 0), 'victoire', 'victoires')} · première le ${date(e.first)}</p>`;
+  }
+  return `<div class="bview bb" data-a="bclose"><div>${body}<div class="row center" style="margin-top:10px"><button class="btn" data-a="bclose">Fermer</button></div></div></div>`;
 }
 
 /* duel */
@@ -1084,7 +1455,7 @@ function renderDuel() {
   const qq = { ...q, given: d.given };
   return `<div class="card ${res ? (d.ok ? 'ok' : 'ko') : ''}">
     <div class="dir"><span class="flag">${esc(d.names[d.p])} · ${esc(flagOf(q))}</span><span>Mot ${d.i + 1}/${d.qs.length} · <b>${d.scores[d.p]}</b> pt${d.scores[d.p] > 1 ? 's' : ''}</span></div>
-    <div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>
+    ${promptBox(q, 'd' + d.p + '-' + d.i, res)}
     ${res ? resultBox(qq, d.ok) : ''}
     <form id="df" autocomplete="off" style="margin-top:14px">${answerInput(q, res ? 'Entrée pour continuer' : 'En ' + langName(q.al) + '…', res ? 'next' : 'done')}<div class="row"><button class="btn grow" type="submit">${res ? (d.i + 1 >= d.qs.length ? 'Terminer' : 'Mot suivant') : 'Valider'}</button></div></form>
   </div>`;
@@ -1126,9 +1497,10 @@ function renderHeader() {
   $('#sStreak').innerHTML = `${ring(tc / g, 20, 3.5)}<span><b>${Math.min(tc, g)}/${g}</b> aujourd'hui</span><span class="sep">·</span>${flame}<span>${st ? `<b>${plural(st, 'jour', 'jours')}</b> d'affilée` : 'série à lancer'}</span>`;
   const lb = cfg.lastBadge;
   $('#sBest').textContent = 'points · ' + titleOf(sc);
-  $('#lastBtn').innerHTML = lb ? `<img src="badge-${esc(lb.img)}.webp" alt=""><small>Dernier badge</small>` : '';
+  $('#sTrack').innerHTML = TR === 'e' ? `Oreille · <b>${fmt(scoreE())}</b> pts` : `Vue · <b>${fmt(scoreW())}</b> pts`;
+  $('#lastBtn').innerHTML = lb ? `<img src="badge-${esc(lb.img)}.webp" alt="">` : '';
   $('#lastBtn').style.visibility = lb ? '' : 'hidden';
-  const counts = INTER.map((_, i) => all.filter(w => w.lvl === i).length);
+  const counts = INTER.map((_, i) => all.filter(w => lvlOf(w) === i).length);
   const max = Math.max(1, ...counts);
   const crown = '<svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><path d="M1 11 2 2l4.5 4L9 0l2.5 6L16 2l1 9z" fill="var(--accent)"/></svg>';
   $('#boxes').innerHTML = counts.map((c, i) => `<div class="bx${i === TOP ? ' trophy' : ''}${i === popBox ? ' pop' : ''}" title="${plural(c, 'mot', 'mots')} · ${PTS[i]} pts chacun"><i style="height:${Math.round(c / max * 100)}%"></i>${i === TOP ? crown : ''}<b>${c}</b><small>${BOXL[i]}</small></div>`).join('');
@@ -1166,7 +1538,7 @@ function renderRev() {
   if (!words.size) return `<div class="empty"><h2>Ta boîte est vide</h2><p>Ajoute tes premiers mots pour commencer à réviser.</p><button class="btn" data-a="goadd">Ajouter des mots</button></div>`;
   if (!MODES.some(m => m[0] === ui.mode)) ui.mode = 'rev';
   const mode = ui.mode;
-  if (mode !== 'rev') return modeBar() + renderFilters() + (mode === 'sprint' ? renderSprint() : mode === 'boss' ? renderBoss() : renderDuel());
+  if (mode !== 'rev') return modeBar() + renderFilters() + (mode === 'sprint' ? renderSprint() : renderDuel());
   const s = session;
   const head = modeBar() + renderFilters();
   if (!s || s.state === 'done') {
@@ -1182,7 +1554,7 @@ function renderRev() {
   const prompt = q.prompt.join(' / ');
   const cls = s.state === 'right' ? 'ok' : s.state === 'wrong' ? 'ko' : '';
   const move = q.to !== q.from ? ` · case ${BOXL[q.to]}` : '';
-  const flagTxt = (q.pl === 'fr' ? 'Français' : getLang(q.pl).name) + ' → ' + ansName;
+  const flagTxt = flagOf(q);
   let fb = '';
   if (s.state === 'right') fb = `<div class="fb ok">Juste ! <span class="pts">${q.delta > 0 ? '+' + q.delta + ' pts' : ''}</span>${move}${q.to === TOP && q.from !== TOP ? ' · mot maîtrisé !' : ''}${q.loose ? `<small>Bonne réponse ! Orthographe exacte : ${esc(q.answers.join(' ou '))}</small>` : q.answers.length > 1 ? `<small>Toutes les réponses : ${esc(q.answers.join(' ou '))}</small>` : ''}</div>`;
   if (s.state === 'wrong') fb = `<div class="fb ko">Ta réponse : <span class="yours">${esc(q.given)}</span><span class="right">${esc(q.answers.join(' ou '))}</span><small>${q.delta < 0 ? `<span class="pts">${q.delta} pts</span> · ` : ''}retour en case Nouv.</small>${mustRetype(q) ? `<small><b>Recopie ${q.answers.flatMap(variants).length > 1 ? 'une de ces réponses' : 'la bonne réponse'} pour continuer.</b></small>` : ''}</div>`;
@@ -1193,7 +1565,7 @@ function renderRev() {
   const party = ui.celebrate ? `<div class="party"><b>Ton premier mot maîtrisé !</b><p>Ça fait au moins 2 mois que tu révises régulièrement. Bravo, continue comme ça.</p>${SUPPORT_URL ? `<p>Si l'appli t'aide à progresser, tu peux soutenir son développement.</p><div class="row"><a class="btn" href="${esc(SUPPORT_URL)}" target="_blank" rel="noopener">Soutenir l'appli</a><button class="btn ghost" type="button" data-a="party">Plus tard</button></div>` : `<div class="row"><button class="btn" type="button" data-a="party">Merci !</button></div>`}</div>` : '';
   return head + party + `<div class="card ${cls}">
     <div class="dir"><span class="flag">${esc(flagTxt)}</span><span>${s.combo >= 3 ? `<span class="combo">Série de ${s.combo}</span> · ` : ''}${prog}</span></div>
-    <div class="word" lang="${esc(langCode(q.pl))}">${esc(prompt)}</div>${sayBtn(q.prompt[0], q.pl)}
+    ${TR === 'e' && s.state === 'ask' ? promptBox(q, 'r' + s.done + q.id, false) : `<div class="word" lang="${esc(langCode(q.pl))}">${esc(prompt)}</div>${sayBtn(q.prompt[0], q.pl)}`}
     ${fb}${s.state !== 'ask' ? sayBtn(q.answers[0], q.al, 'Écouter la réponse') : ''}
     <form id="f" autocomplete="off" style="margin-top:14px">
       <input id="ans" lang="${esc(langCode(q.al))}" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="${s.state === 'ask' || retype ? 'done' : 'next'}" placeholder="${esc(ph)}" aria-label="Ta réponse en ${esc(ansName)}">
@@ -1416,12 +1788,12 @@ function render(fromSnap) {
   const ae = document.activeElement, keep = ae?.id;
   if (fromSnap && ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.id !== 'ans') return;
   const ansVal = fromSnap ? $('#ans')?.value : null;
-  if (view !== 'rev') $('#main').style.paddingBottom = '';
+  if (!isPlay()) $('#main').style.paddingBottom = '';
   const banner = !ui.newVersion ? '' : ui.updFailed
     ? `<div class="upd"><span>La version ${esc(ui.newVersion)} ne s'installe pas : sur GitHub, <b>app.js</b> ou <b>style.css</b> n'ont pas été remplacés (version installée : ${APP_VERSION}). Renvoie tous les fichiers, attends la coche verte, puis réessaie.</span><button class="btn small" data-a="update">Réessayer</button></div>`
     : `<div class="upd"><span>Nouvelle version disponible (${esc(ui.newVersion)})</span><button class="btn small" data-a="update">Mettre à jour</button></div>`;
-  $('#main').innerHTML = banner + (view === 'rev' ? renderRev() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : view === 'coll' ? renderColl() : renderSet()) + renderWelcome();
-  if (view === 'rev') {
+  $('#main').innerHTML = banner + (view === 'rev' || view === 'ear' ? renderRev() : view === 'hunt' ? renderHunt() : view === 'lib' ? renderLib() : view === 'add' ? renderAdd() : view === 'help' ? renderHelp() : view === 'prog' ? renderProg() : view === 'best' ? renderBest() : view === 'coll' ? renderColl() : renderSet()) + renderWelcome();
+  if (isPlay()) {
     const a = $('#ans');
     const card = document.querySelector('.card');
     // enough room below the card so it can always sit at the top of the screen, above the keyboard
@@ -1434,20 +1806,26 @@ function render(fromSnap) {
 /* ---------- listening (speech synthesis of the phone, works offline) ---------- */
 const SPEAK = { fr: 'fr-FR', en: 'en-GB', ko: 'ko-KR', es: 'es-ES', de: 'de-DE', it: 'it-IT', ja: 'ja-JP', zh: 'zh-CN', pt: 'pt-PT', ru: 'ru-RU', ar: 'ar-SA', nl: 'nl-NL' };
 const canSpeak = () => 'speechSynthesis' in window;
-function say(text, langId) {
+function say(text, langId, rate) {
   if (!canSpeak() || !text) return;
   const code = langCode(langId), tag = SPEAK[code] || code;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(String(text).replace(/\([^)]*\)/g, '').split(/[\/;]/)[0].trim());
-  u.lang = tag; u.rate = .9;
+  u.lang = tag; u.rate = rate || .9;
   const v = speechSynthesis.getVoices().find(x => x.lang && x.lang.toLowerCase().startsWith(code.toLowerCase()));
-  if (v) u.voice = v;
+  try { if (v) u.voice = v; } catch (e) { /* keep the default voice */ }
   speechSynthesis.speak(u);
+}
+// the question: shown at the plume, only heard at the oreille (until the answer is revealed)
+function promptBox(q, key, shown) {
+  if (TR !== 'e' || shown) return `<div class="word" lang="${esc(langCode(q.pl))}">${esc(q.prompt.join(' / '))}</div>${sayBtn(q.prompt[0], q.pl)}`;
+  if (ui.earKey !== key) { ui.earKey = key; setTimeout(() => say(q.prompt[0], q.pl), 120); }
+  return `<div class="earq"><button type="button" class="earbig" data-a="say" data-t="${esc(q.prompt[0])}" data-l="${esc(q.pl)}" aria-label="Réécouter"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg><span>Réécouter</span></button><button type="button" class="btn ghost small" data-a="say" data-t="${esc(q.prompt[0])}" data-l="${esc(q.pl)}" data-r=".55">Plus lentement</button></div>`;
 }
 const sayBtn = (text, langId, label) => langId === 'fr' || !canSpeak() ? '' : `<button type="button" class="say" data-a="say" data-t="${esc(text)}" data-l="${esc(langId)}" aria-label="${esc(label || 'Écouter')}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>${label ? `<span>${esc(label)}</span>` : ''}</button>`;
 // automatic reading: the foreign word when it appears, the foreign answer once revealed
 function autoSay(key, text, langId) {
-  if (!cfg.ttsAuto || langId === 'fr' || ui.saidKey === key) return;
+  if (TR === 'e' || !cfg.ttsAuto || langId === 'fr' || ui.saidKey === key) return;
   ui.saidKey = key; setTimeout(() => say(text, langId), 60);
 }
 
@@ -1455,7 +1833,7 @@ function autoSay(key, text, langId) {
 const WELCOME = [
   ['Bienvenue !', 'Mon vocabulaire t\'aide à retenir les mots de tes cours. Commence par ajouter tes mots dans l\'onglet <b>Ajouter</b> : un par un, en collant une liste, ou en demandant une liste toute prête à une IA (l\'appli te prépare la demande).'],
   ['Réviser au bon moment', 'Traduis chaque mot en écrivant ta réponse. Juste : le mot monte d\'une case et revient plus tard (1 jour, 3 jours, 1 semaine… jusqu\'à 3 mois). Raté : il revient vite. Plus un mot monte, plus il rapporte de points.'],
-  ['Jouer', 'En plus de la révision : le <b>Sprint</b> (un maximum de bonnes réponses en 60 secondes), la <b>chasse aux monstres</b> (bats les créatures du folklore pour remplir ton bestiaire) et le <b>Duel</b> à deux sur le même téléphone.'],
+  ['Vue, Oreille et Monstres', 'En <b>Vue</b>, tu lis le mot. À l\'<b>Oreille</b>, tu l\'entends seulement : réponds dans sa langue (dictée) ou en français (compréhension). Chacun a son Sprint et son Duel. Dans <b>Monstres</b>, bats les créatures du folklore pour remplir ton bestiaire.'],
   ['Progresser', 'Chaque jour, un défi : 10, 20, 30 ou 50 bonnes réponses. Enchaîne les jours, gagne des titres, des badges… et trouve les badges secrets. Touche la ligne du défi en haut pour voir ta progression.']
 ];
 function renderWelcome() {
@@ -1513,7 +1891,7 @@ function toast(t, undo) {
 $('#toastB').addEventListener('click', () => { toastUndo?.(); $('#toast').style.display = 'none'; });
 
 /* ---------- events ---------- */
-const go = v => { view = v; ui.bview = null; ui.beastView = null; if (v !== 'rev') stopBossTimer(); ui.openId = null; ui.editLib = null; ui.confirm = null; ui.newLib = false; ui.addNew = false; ui.restore = null; ui.backupText = ''; if (v === 'rev') startSessionIfNeeded(); render(); };
+const go = v => { view = v; ui.bview = null; ui.beastView = null; if (v !== 'hunt') stopBossTimer(); if (v === 'rev') setTrack('w'); if (v === 'ear') setTrack('e'); if (v === 'hunt') setTrack(ui.huntTrack || 'w'); ui.openId = null; ui.editLib = null; ui.confirm = null; ui.newLib = false; ui.addNew = false; ui.restore = null; ui.backupText = ''; if (v === 'rev' || v === 'ear') startSessionIfNeeded(); render(); };
 document.querySelector('nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.v); });
 $('#gear').addEventListener('click', () => go(view === 'set' ? 'rev' : 'set'));
 $('#score').addEventListener('click', () => go(view === 'help' ? 'rev' : 'help'));
@@ -1594,7 +1972,8 @@ $('#main').addEventListener('click', e => {
   if (a === 'coll') go('coll');
   if (a === 'collback') go('prog');
   if (a === 'bestiary') go('best');
-  if (a === 'bestback') { go('rev'); }
+  if (a === 'bestback') { go('hunt'); }
+  if (a === 'hunttrack') { stopBossTimer(); ui.huntTrack = b.dataset.k; ui.boss = null; setTrack(ui.huntTrack); render(); }
   if (a === 'bestsort') { ui.bestSort = b.dataset.k; render(); }
   if (a === 'beast') { ui.beastView = b.dataset.k; render(); }
   if (a === 'duelgo') duelStart();
@@ -1661,7 +2040,7 @@ $('#main').addEventListener('click', e => {
     if (k !== 'custom' && PRESETS[k]) { cfg.theme.main = PRESETS[k].main; cfg.theme.accent = PRESETS[k].accent; }
     cfg.theme.preset = k; applyTheme(); saveCfg(); render();
   }
-  if (a === 'say') { say(b.dataset.t, b.dataset.l); return; }
+  if (a === 'say') { say(b.dataset.t, b.dataset.l, Number(b.dataset.r) || 0); return; }
   if (a === 'ttsauto') { cfg.ttsAuto = !cfg.ttsAuto; saveCfg(); render(); }
   if (a === 'welcome') { ui.welcome = 0; render(); }
   if (a === 'wnext') { ui.welcome++; render(); }
@@ -1708,7 +2087,7 @@ $('#main').addEventListener('change', e => {
   }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && view === 'rev' && (ui.mode || 'rev') === 'rev' && (session?.state === 'right' || (session?.state === 'wrong' && !mustRetype(session.cur))) && !/BUTTON|INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) { e.preventDefault(); next(); render(); }
+  if (e.key === 'Enter' && (view === 'rev' || view === 'ear') && (ui.mode || 'rev') === 'rev' && (session?.state === 'right' || (session?.state === 'wrong' && !mustRetype(session.cur))) && !/BUTTON|INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) { e.preventDefault(); next(); render(); }
 });
 
 applyTheme();
