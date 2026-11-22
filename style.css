@@ -111,8 +111,46 @@ a.btn{display:inline-flex;align-items:center;text-decoration:none}
 .badge b{font-size:14px}.badge span{font-size:12px;color:var(--mut)}
 .badge:not(.on)>svg,.badge:not(.on)>b{opacity:.6}
 .bimg{width:84px;height:84px;object-fit:contain;display:block}
-.bimg.locked{filter:grayscale(1) brightness(.9);opacity:.35}
-.badge.legend{border-color:#d4af37;box-shadow:0 0 0 2px #d4af37 inset}
+.locked{filter:brightness(0) invert(.55);opacity:.35}
+.badge.maxed{border-color:#6d3fb0;box-shadow:0 0 0 2px #6d3fb0 inset}
+.bpic{background:none;border:0;padding:0;cursor:pointer;border-radius:12px}
+.minis{display:flex;gap:2px;justify-content:center;margin:2px 0}
+.minis button{background:none;border:0;padding:1px;cursor:pointer;border-radius:6px;line-height:0}
+.minis img{width:22px;height:22px;object-fit:contain}
+.minis button[aria-current=true]{outline:2px solid var(--btn)}
+.secrets{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.secrets button{aspect-ratio:1;border:2px solid var(--line);border-radius:12px;background:var(--soft);cursor:pointer;padding:4px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:var(--mut)}
+.secrets button.on{border-color:#6d3fb0;background:var(--card)}
+.secrets img{width:100%;height:100%;object-fit:contain}
+.lastb{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.lastb img{width:48px;height:48px;object-fit:contain}
+.lastb span{display:flex;flex-direction:column;font-size:13px;color:var(--mut)}.lastb b{font-size:15px;color:var(--ink,inherit)}
+.hbadge{width:18px;height:18px;object-fit:contain;vertical-align:-4px;margin-left:3px}
+.beast{display:block;object-fit:contain}
+.beast.big{width:220px;height:220px;margin:0 auto 4px}
+.beast.small{width:76px;height:76px;flex:none}
+.beast.mid{width:150px;height:150px;margin:0 auto}
+.arena{display:flex;flex-direction:column;gap:6px}.arena-top{display:flex;justify-content:space-between;align-items:center}.arena-top b{font-size:18px}
+.beast.hit{animation:shake .4s}
+.beast.appear{animation:appear .6s ease-out}
+.beast.flee{opacity:.35;filter:grayscale(1)}
+@keyframes appear{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
+.beastcard p{margin:6px 0}
+.rar{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--rc);border-radius:999px;padding:2px 9px}
+.rules{display:flex;flex-direction:column;gap:4px;margin:8px 0}.rules span{font-size:13px;background:var(--soft);border-radius:10px;padding:6px 10px}
+.beasts-q{display:flex;justify-content:center;gap:8px;margin-bottom:8px}.beasts-q i{width:52px;height:52px;border-radius:14px;background:var(--soft);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:800;font-size:24px;color:var(--mut)}
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.bcard{display:flex;flex-direction:column;align-items:center;gap:3px;border:2px solid var(--line);border-radius:14px;background:var(--card);padding:8px 6px 10px;cursor:pointer;color:inherit;font:inherit}
+.bcard.on{border-color:var(--btn)}.bcard b{font-size:13px}.bcard .num{font-size:11px;color:var(--mut);align-self:flex-start}
+.bimg2{width:84px;height:84px;object-fit:contain}
+.bq{width:84px;height:84px;display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:800;color:var(--mut);background:var(--soft);border-radius:14px}
+.ltxt{color:inherit!important;font-size:14px;line-height:1.45}
+@media(prefers-reduced-motion:reduce){.beast.hit,.beast.appear{animation:none}}
+.bview{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+.bview>div{background:var(--card);border-radius:20px;padding:22px 20px;max-width:340px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
+.bview img{width:200px;height:200px;object-fit:contain}
+.bview .q{width:200px;height:200px;display:flex;align-items:center;justify-content:center;font-size:96px;font-weight:800;color:var(--mut);background:var(--soft);border-radius:24px}
+.bview b.big2{margin-top:6px}.bview p{margin:0;color:var(--mut);font-size:14px}
 .pips i:nth-child(6){border-radius:2px}.badge.on{border-color:var(--btn)}
 .card.ok{animation:bump .35s}
 @keyframes bump{50%{transform:scale(1.015)}}
