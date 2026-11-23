@@ -1,6 +1,6 @@
 /* Mon vocabulaire — toutes les données restent sur l'appareil (localStorage). */
 {
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.5.2';
 const DAY = 86400000;
 const INTER = [0, 1, 3, 7, 16, 35, 90];
 const PTS = [0, 1, 2, 4, 8, 16, 40];
@@ -308,7 +308,11 @@ function swapDark(root) {
   root.querySelectorAll('img[src^="badge-"],img[src^="boss-"]').forEach(im => {
     const src = im.getAttribute('src'), base = src.replace(/(-d)?\.webp$/, '');
     const want = dark && hasDark(base) ? base + '-d.webp' : base + '.webp';
-    if (src !== want) im.setAttribute('src', want);
+    if (src !== want) {
+      // if the dark file is missing (not uploaded yet), fall back to the light one
+      if (want.endsWith('-d.webp')) im.onerror = () => { im.onerror = null; im.setAttribute('src', base + '.webp'); };
+      im.setAttribute('src', want);
+    }
   });
 }
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (cfg.theme.mode === 'auto') render(); }); } catch (e) {}
@@ -2102,7 +2106,7 @@ function firstRun() {
 function aiPrompt() {
   const L = getLang(ui.addLang), g = ui.gen || {}, n = g.n || 30, lvl = g.lvl || 'débutant', theme = (g.theme || '').trim() || 'la vie quotidienne';
   const name = lower(L.name), extra = [];
-  if (L.code === 'en') extra.push('- Les verbes avec « to » devant (ex. « to drive = conduire »).');
+  if (L.code === 'en') extra.push('- Les verbes avec « to » devant (ex. « To drive = Conduire »).');
   if (L.code === 'ko') extra.push('- Les mots coréens en hangeul uniquement, sans romanisation.');
   return `Donne-moi une liste de ${n} mots de vocabulaire en ${name} sur le thème « ${theme} », niveau ${lvl}, pour un francophone.
 
@@ -2111,8 +2115,9 @@ mot en ${name} = traduction en français
 
 Règles :
 - Commence par une ligne « # ${theme.charAt(0).toUpperCase() + theme.slice(1)} ».
+- Chaque mot et chaque traduction commencent par une majuscule (ex. « ${L.code === 'en' ? 'To drive = Conduire' : 'Mot = Traduction'} »)${L.code === 'ko' ? ', sauf le coréen qui n\'a pas de majuscules' : ''}.
 - S'il y a plusieurs traductions françaises, sépare-les par « / ».
-${extra.length ? extra.join('\n') + '\n' : ''}- Si un mot est ambigu, ajoute un indice entre parenthèses, ex. « bat = chauve-souris (animal) ».
+${extra.length ? extra.join('\n') + '\n' : ''}- Si un mot est ambigu, ajoute un indice entre parenthèses, ex. « Bat = Chauve-souris (animal) ».
 - Les nombres en chiffres du côté français.
 - Seulement des mots ou des expressions courtes, pas de phrases.`;
 }
@@ -2121,7 +2126,8 @@ function renderGen() {
   return `<section><h2>Créer une liste avec une IA</h2>
     <p class="note" style="margin-top:0">Pas de liste sous la main ? L'appli prépare une demande toute faite pour Claude, ChatGPT ou Gemini.</p>
     <ol class="steps"><li>Choisis un thème, un nombre de mots et un niveau.</li><li>Appuie sur <b>Copier la demande</b>.</li><li>Colle-la dans l'IA de ton choix et envoie.</li><li>Copie sa réponse et colle-la ci-dessous dans <b>Importer une liste</b>.</li></ol>
-    <label for="g-theme">Thème (en ${esc(lower(L.name))})</label><input id="g-theme" placeholder="ex. la cuisine, le chantier, les voyages" value="${esc(g.theme || '')}">
+    <label for="g-lang">Langue</label><select id="g-lang">${cfg.langs.map(l => `<option value="${l.id}"${l.id === L.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}${(() => { const av = LANG_PRESETS.filter(([n, c]) => !cfg.langs.some(l => l.code === c)); return av.length ? `<optgroup label="Nouvelle langue">${av.map(([n, c]) => `<option value="new:${c}">${esc(n)}</option>`).join('')}</optgroup>` : ''; })()}</select>
+    <label for="g-theme">Thème</label><input id="g-theme" placeholder="ex. la cuisine, le chantier, les voyages" value="${esc(g.theme || '')}">
     <div class="two"><div><label for="g-n">Nombre de mots</label><select id="g-n">${[10, 20, 30, 50].map(v => `<option${(g.n || 30) === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
     <div><label for="g-lvl">Niveau</label><select id="g-lvl">${['débutant', 'intermédiaire', 'avancé'].map(v => `<option${(g.lvl || 'débutant') === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
     <div class="row"><button class="btn" type="button" data-a="gencopy">Copier la demande</button><button class="btn ghost" type="button" data-a="genshow">${g.show ? 'Masquer' : 'Voir'} la demande</button></div>
@@ -2328,7 +2334,8 @@ $('#main').addEventListener('input', e => {
 $('#main').addEventListener('change', e => {
   const id = e.target.id;
   if (id === 'c-main' || id === 'c-acc') { saveCfg(); render(); }
-  if (id === 'a-lang') { ui.addLang = e.target.value; ui.addLib = '__auto'; ui.addNew = false; render(); }
+  if (id === 'g-lang' && e.target.value.startsWith('new:')) { readGen(); const pr = LANG_PRESETS.find(x => x[1] === e.target.value.slice(4)); const nl = addLanguage(pr[0], pr[1]); ui.addLang = nl.id; ui.addLib = '__auto'; toast(`Bibliothèque « ${pr[0]} » créée`); render(); return; }
+  if (id === 'a-lang' || id === 'g-lang') { readGen(); ui.addLang = e.target.value; ui.addLib = '__auto'; ui.addNew = false; render(); }
   if (id === 'a-lib') {
     if (e.target.value === '__new') { ui.addNew = true; render(); $('#at-n')?.focus(); }
     else { ui.addLib = e.target.value; ui.addNew = false; render(); }
